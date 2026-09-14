@@ -16,7 +16,6 @@ void unifying_pair_request_1_init(struct unifying_pair_request_1* unpacked,
     unpacked->protocol = 0x04; // Unifying protocol.
     unpacked->device_type = device_type;
     unpacked->unknown_20 = 0x01;
-    unpacked->checksum = unifying_checksum((uint8_t*) unpacked, sizeof(struct unifying_pair_request_1));
 }
 
 void unifying_pair_request_1_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_1_LEN],
@@ -33,7 +32,8 @@ void unifying_pair_request_1_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_1_LEN],
     unifying_uint16_pack(&packed[13], unpacked->device_type);
     memcpy(&packed[15], unpacked->unknown_15_19, sizeof(unpacked->unknown_15_19));
     packed[20] = unpacked->unknown_20;
-    packed[21] = unpacked->checksum;
+    /* 必须对线格式打包后再算校验（结构体内含对齐/端序，不能直接 checksum） */
+    packed[21] = unifying_checksum(packed, UNIFYING_PAIR_REQUEST_1_LEN - 1);
 }
 
 void unifying_pair_response_1_unpack(struct unifying_pair_response_1* unpacked,
@@ -64,8 +64,8 @@ void unifying_pair_request_2_init(struct unifying_pair_request_2* unpacked,
     unpacked->crypto = crypto;
     unpacked->serial = serial;
     unpacked->capabilities = capabilities;
-    unpacked->unknown_13_20[15] = 0x01;
-    unpacked->checksum = unifying_checksum((uint8_t*) unpacked, sizeof(struct unifying_pair_request_2));
+    /* 对应线格式 packed[20]=0x01；旧代码误写 [15] 造成越界 */
+    unpacked->unknown_13_20[7] = 0x01;
 }
 
 void unifying_pair_request_2_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_2_LEN],
@@ -78,7 +78,7 @@ void unifying_pair_request_2_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_2_LEN],
     unifying_uint32_pack(&packed[7], unpacked->serial);
     unifying_uint16_pack(&packed[11], unpacked->capabilities);
     memcpy(&packed[13], unpacked->unknown_13_20, sizeof(unpacked->unknown_13_20));
-    packed[21] = unpacked->checksum;
+    packed[21] = unifying_checksum(packed, UNIFYING_PAIR_REQUEST_2_LEN - 1);
 }
 
 void unifying_pair_response_2_unpack(struct unifying_pair_response_2* unpacked,
@@ -102,9 +102,17 @@ void unifying_pair_request_3_init(struct unifying_pair_request_3* unpacked, cons
     unpacked->frame = 0x5F;
     unpacked->step = 0x03;
     unpacked->unknown_3 = 0x01;
+    /* HID++ 设备名寄存器最长 14 字节；超出时主机侧易乱码 */
+    if (name_length > UNIFYING_HIDPP_NAME_LEN_MAX) {
+        name_length = UNIFYING_HIDPP_NAME_LEN_MAX;
+    }
+    if (name_length > UNIFYING_MAX_NAME_LEN) {
+        name_length = UNIFYING_MAX_NAME_LEN;
+    }
     unpacked->name_length = name_length;
-    memcpy(unpacked->name, name, name_length);
-    unpacked->checksum = unifying_checksum((uint8_t*) unpacked, sizeof(struct unifying_pair_request_3));
+    if (name != NULL && name_length > 0) {
+        memcpy(unpacked->name, name, name_length);
+    }
 }
 
 void unifying_pair_request_3_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_3_LEN],
@@ -116,7 +124,7 @@ void unifying_pair_request_3_pack(uint8_t packed[UNIFYING_PAIR_REQUEST_3_LEN],
     packed[3] = unpacked->unknown_3;
     packed[4] = unpacked->name_length;
     memcpy(&packed[5], unpacked->name, sizeof(unpacked->name));
-    packed[21] = unpacked->checksum;
+    packed[21] = unifying_checksum(packed, UNIFYING_PAIR_REQUEST_3_LEN - 1);
 }
 
 void unifying_pair_response_3_unpack(struct unifying_pair_response_3* unpacked,

@@ -113,6 +113,7 @@ static void handle_line(struct app_ctx *ctx, char *line)
 	}
 
 	if (strcmp(line, "pair") == 0) {
+		app_stop_boot_try(ctx);
 		printk("Pairing... put receiver in pairing mode first.\n");
 		err = app_do_pair(ctx);
 		ctx->last_error = err;
@@ -147,14 +148,17 @@ static void handle_line(struct app_ctx *ctx, char *line)
 	}
 
 	if (strncmp(line, "key ", 4) == 0) {
-		if (ctx->mode != APP_MODE_CONNECTED) {
-			reply_err("not_connected", UNIFYING_SUCCESS);
-			return;
-		}
+		/* 已配对可自动唤醒；未配对不 pair，返回 not_paired / not_connected */
 		err = app_do_key(ctx, line + 4);
 		ctx->last_error = err;
 		if (err == UNIFYING_ERROR) {
-			reply_err("unknown_key", UNIFYING_SUCCESS);
+			if (!ctx->has_credentials && ctx->mode != APP_MODE_CONNECTED) {
+				reply_err("not_paired", UNIFYING_SUCCESS);
+			} else if (ctx->mode != APP_MODE_CONNECTED) {
+				reply_err("not_connected", UNIFYING_SUCCESS);
+			} else {
+				reply_err("unknown_key", UNIFYING_SUCCESS);
+			}
 		} else if (err) {
 			reply_err("key_failed", err);
 		} else {

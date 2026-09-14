@@ -78,10 +78,12 @@
 
 /*!
  * Maximum name length for a Unifying device.
- * 
- * This length does not include a NULL terminator.
+ *
+ * RF 包内预留 16 字节，但 HID++ 名称寄存器最长 14 字节。
+ * 此长度不含 NULL 终止符。
  */
 #define UNIFYING_MAX_NAME_LEN 16
+#define UNIFYING_HIDPP_NAME_LEN_MAX 14
 
 /*!
  * Number keyboard scancodes that can be transmitted in a single encrypted payload.

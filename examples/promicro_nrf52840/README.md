@@ -18,11 +18,14 @@
 
 | 能力 | 命令 / 行为 |
 |------|-------------|
+| 上电自动 | 未配对：20s 内多次 `pair`；已配对：先重连一次，失败则立即转入 20s 配对；超时休眠 |
+| 空闲休眠 | 已连接后 **60s 无按键** → 关 RADIO 休眠 |
+| 按键唤醒 | `sw0`：已配对则重连/发键；未配对忽略；**配对窗内有凭证时按键优先重连，成功则停止配对** |
 | 配对 | `pair` → `unifying_pair()`，凭证写入 NVS |
-| 按键 | `key a` / `key shift+a` → 加密按键按下+松开 |
+| 按键 | `key a` / `key shift+a` → 加密按键按下+松开（失败自动跳频重试） |
 | 主动休眠 | `sleep` → 停 keep-alive，关 RADIO |
-| 休眠重连 | `wake` → `unifying_connect()` wake-up |
-| 断电重连 | 上电自动读 NVS 并 `connect`，再开串口看 `status` |
+| 休眠重连 | `wake` 或 `key ...`（自动唤醒）→ `unifying_connect()` |
+| 断电重连 | 上电读 NVS → 重连一次；失败则 20s 配对窗；成功后可用 `status` 查看 |
 
 ## 硬件与依赖
 
@@ -179,17 +182,29 @@ NCS 下用 [`pm_static.yml`](pm_static.yml) 固定 SuperMini UF2 + S140 v7 布�
 
 ## 测试步骤（串口确认后再做）
 
+### 自动上电行为
+
+1. **未配对**：上电后约 **20s** 内多次尝试 `pair`（接收器需先进入配对）。超时未成功 → `sleeping`
+2. **已配对**：上电先 **重连一次**；成功 → 进入 60s 无按键休眠逻辑；失败 → **立即**转入 20s 配对窗（同上）
+3. **已连接**：60s 无 `key` / 物理按键 → 自动 `sleep`
+4. **物理按键（P0.02/D19）**：
+   - 未配对 → **忽略**
+   - 已配对未连接 → 尝试重连并发送 `a`
+   - 已连接 → 直接发送 `a`
+   - **配对窗内**（上电重连失败后的 20s）：若仍有旧凭证，按键会先重连一次；成功则**停止配对**并发送 `a`；失败则继续配对窗
+
 ### 1. 配对
 
 1. PC 串口已能 `help` / `status`
 2. 插入 Unifying 接收器，**按接收器上的配对按钮**（指示灯按接收器说明闪烁）
-3. 串口发送：`pair`
+3. 上电自动配对，或串口发送：`pair`
 4. 成功：`OK`；`status` → `mode=connected paired=yes`
 5. 可选：罗技 Unifying 软件中查看是否出现 **ProMicroKB**
 
 ### 2. 按键
 
-记事本聚焦后：`key a`、`key shift+a`、`key enter`。
+记事本聚焦后：`key a`、`key shift+a`、`key enter`。  
+若偶发 `TRANSMIT_ERROR`，固件会自动跳频重试；仍失败可靠近接收器再试。
 
 ### 3. 主动休眠
 
@@ -197,11 +212,12 @@ NCS 下用 [`pm_static.yml`](pm_static.yml) 固定 SuperMini UF2 + S140 v7 布�
 
 ### 4. 休眠重连
 
-`wake` → `connected` → 再 `key a`。
+`wake` 或再发 `key a`（已配对时会自动唤醒）→ `connected` → 再确认按键。  
+未配对时物理键/串口 `key` 不会自动配对（串口需手动 `pair`）。
 
 ### 5. 断电重连
 
-已配对后拔 USB / 按 RST → 再插电 → 开串口 `status` 应为 `connected`。
+已配对后拔 USB / 按 RST → 再插电 → 应先看到重连成功为 `connected`；若重连失败会进入 20s 配对尝试，再失败则 `sleeping`。
 
 ## 架构
 
@@ -243,7 +259,9 @@ PC 串口 ──USB CDC──► usb_cli ──► app 状态机
 | `help` 无响应 | 换行用 LF；确认 COM 口 |
 | 接收器“扫不到” | **不要扫**。先串口通，再 `pair` |
 | `pair` 失败 | 接收器配对键；贴近；看 `status` 的 `last_err` |
-| VID/PID 不是 1915:520F | 仍是 bootloader 或其它固件 |
+| 名称乱码（如 `êo@ProMicroKB`） | 旧固件用了随机 product_id。刷新固件后：串口 `unpair`，罗技软件里删掉设备，再重新 `pair` |
+| `key` 偶发 TRANSMIT_ERROR | 已做跳频重试；仍失败则靠近接收器、减少 2.4G 干扰 |
+| VID/PID 不是 1915:520F | 仍是 bootloader 或其它固件（新 USB 栈也可能显示 2FE3:xxxx，以 CLI banner 为准） |
 | 编译无 `esb.h` | 必须在 NCS / Codespaces 中编 |
 | NVS 报错 | 使用仓库内 `pm_static.yml`（已含 storage） |
 

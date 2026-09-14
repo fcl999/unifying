@@ -24,7 +24,7 @@ LOG_MODULE_REGISTER(radio_esb, CONFIG_LOG_DEFAULT_LEVEL);
 #endif
 
 #define RADIO_RX_QUEUE_DEPTH 4
-#define RADIO_TX_TIMEOUT_MS 100
+#define RADIO_TX_TIMEOUT_MS 150
 
 struct radio_rx_slot {
 	uint8_t length;
@@ -153,7 +153,7 @@ static int esb_configure(void)
 	config.crc = ESB_CRC_16BIT;
 	config.tx_output_power = 4; /* ~+4 dBm，接近 RF24 PA_MAX */
 	config.retransmit_delay = 3750; /* 对齐 RF24 setRetries(15, *) 的 15*250us */
-	config.retransmit_count = 10;
+	config.retransmit_count = 15;   /* 提高抗干扰，减轻偶发 TRANSMIT_ERROR */
 	config.tx_mode = ESB_TXMODE_AUTO;
 	config.payload_length = UNIFYING_MAX_PAYLOAD_LEN;
 	config.selective_auto_ack = false;

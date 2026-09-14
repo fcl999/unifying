@@ -27,6 +27,7 @@ target_sources(app PRIVATE
   src/usb_cli.c
   src/persist.c
   src/keymap.c
+  src/key_gpio.c
   ${UNIFYING_SRC_DIR}/unifying.c
   ${UNIFYING_SRC_DIR}/unifying_data.c
   ${UNIFYING_SRC_DIR}/unifying_state.c

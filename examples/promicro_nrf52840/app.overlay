@@ -3,6 +3,22 @@
 		zephyr,console = &board_cdc_acm_uart;
 		zephyr,shell-uart = &board_cdc_acm_uart;
 	};
+
+	/*
+	 * 测试按键：P0.02 (Pro Micro D19) 对 GND，内部上拉，按下为低有效。
+	 * 按下后：休眠则唤醒重连，并发送键 'a'。可按实际矩阵改引脚。
+	 */
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Key0";
+		};
+	};
+
+	aliases {
+		sw0 = &button0;
+	};
 };
 
 /* SuperMini uses SoftDevice S140 v7.3.0; replace the board's v6 code node. */
