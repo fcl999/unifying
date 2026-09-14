@@ -7,6 +7,10 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# Prefer Adafruit UF2 + SoftDevice flash map when building under NCS Partition Manager.
+set(PM_STATIC_YML_FILE ${CMAKE_CURRENT_SOURCE_DIR}/pm_static.yml CACHE FILEPATH
+    "Static partition map for Adafruit UF2 / SoftDevice boards" FORCE)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(promicro_unifying)
 

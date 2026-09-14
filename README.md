@@ -17,14 +17,15 @@ Pro Micro nRF52840 (nRF Connect SDK + ESB + USB CDC) example:
 ## GitHub Codespaces
 
 Open this repo in [Codespaces](https://github.com/codespaces) (uses [`nordicplayground/nrfconnect-sdk:v2.9-branch`](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk)).
-First create runs `.devcontainer/post-create.sh` to fetch nRF Connect SDK (prefer 2+ core machine; NCS download needs enough disk).
+First create activates the image toolchain via `nrfutil` (Codespaces overrides ENTRYPOINT) and uses the pre-baked `/workdir` NCS.
 
 ```bash
 ./scripts/build-promicro.sh
 ```
 
-Firmware output: `examples/promicro_nrf52840/build/zephyr/zephyr.uf2` (or `.hex`).
-See [examples/promicro_nrf52840/README.md](examples/promicro_nrf52840/README.md).
+Firmware: `examples/promicro_nrf52840/build/zephyr/zephyr.uf2` (or `.hex`).
+
+**Flash check:** after UF2 copy, a USB serial port must appear and show `=== ProMicro Unifying CLI ===`. Unifying receivers do **not** BLE-scan for this device — use serial `pair` after the receiver pairing button. See [examples/promicro_nrf52840/README.md](examples/promicro_nrf52840/README.md).
 
 ## TODO
 - [ ] Add proper HID++ response payloads

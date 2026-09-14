@@ -6,157 +6,214 @@
 
 > 需要 **nRF Connect SDK**（含 `CONFIG_ESB`）。上游纯 Zephyr 没有 ESB，无法直接编译本示例。
 
+## 重要：优联不是蓝牙
+
+本固件走 **Logitech Unifying（ESB 私有协议）**，**不会**出现在蓝牙扫描列表里。
+
+- 罗技 Unifying 接收器 / 罗技软件 **不会**像 BLE 那样“扫描到未配对设备”
+- 必须：接收器按配对键 → PC 串口发 `pair` → 射频完成握手后才会出现设备（名称约 `ProMicroKB`）
+- **判断固件是否刷成功，看 USB 串口，不要看接收器能不能扫到**
+
 ## 功能
 
 | 能力 | 命令 / 行为 |
 |------|-------------|
 | 配对 | `pair` → `unifying_pair()`，凭证写入 NVS |
 | 按键 | `key a` / `key shift+a` → 加密按键按下+松开 |
-| 主动休眠 | `sleep` → 停 keep-alive，关闭 RADIO |
+| 主动休眠 | `sleep` → 停 keep-alive，关 RADIO |
 | 休眠重连 | `wake` → `unifying_connect()` wake-up |
 | 断电重连 | 上电自动读 NVS 并 `connect`，再开串口看 `status` |
 
 ## 硬件与依赖
 
-- 板子：`promicro_nrf52840`（或同引脚的 Nice!Nano 克隆板）
+- 板子：`promicro_nrf52840`（或同引脚的 Nice!Nano / SuperMini 克隆板）
 - 罗技 Unifying 接收器（自用测试）
-- PC：Windows 串口助手 / PuTTY（115200 8N1）
-- SDK：nRF Connect SDK **2.9+** 或 **3.x**（需有该板型；没有可用 `nice_nano_v2`）
+- PC：Windows 串口助手 / PuTTY（**115200 8N1**，换行建议发 `\n`）
+- SDK：nRF Connect SDK **2.9+** 或 **3.x**（无该板型时可用 `nice_nano_v2`）
 
-**不要启用 Bluetooth**：RADIO 与 ESB 互斥。出厂 SoftDevice / UF2 可保留，应用侧 `CONFIG_BT=n`。
+**不要启用 Bluetooth**：RADIO 与 ESB 互斥。出厂 SoftDevice / UF2 bootloader 可保留，应用侧 `CONFIG_BT=n`。
+
+## 如何确认固件已刷入（必读）
+
+刷入成功后，**唯一可靠依据是 USB CDC 串口 CLI**，不是 LED 颜色，也不是优联接收器。
+
+### 检查清单
+
+1. **UF2 拷贝是否完成**
+   - 双击 RST 进入 bootloader：出现 U 盘（常见名 `NICENANO` / `NRF52BOOT` 等），**红灯呼吸/渐变**
+   - 把 `zephyr.uf2` 拖进 U 盘；拷贝结束后 U 盘应自动弹出，板子重启
+   - 若 U 盘一直不消失、或文件仍在盘里，说明没刷进去
+
+2. **重启后应出现串口（成功标志）**
+   - 设备管理器里出现新的 **COM 口**（USB 串行设备 / CDC ACM）
+   - 设备名称可能含 **`ProMicro Unifying`**
+   - VID/PID（本工程配置）：**`1915:520F`**（Nordic VID + 自定义 PID）
+   - 用串口助手打开该 COM：**115200**，应看到类似：
+
+     ```text
+     === ProMicro Unifying CLI ===
+     Type 'help' for commands.
+     Boot status: mode=... paired=... last_err=...
+     ```
+
+   - 发送 `help` 再回车，应打印命令列表并以 `OK` 结尾  
+   - 发送 `status`，应打印 `mode=idle|connected|...`
+
+3. **若没有 COM 口 / 没有上述 banner**
+   - **本固件未在跑**（刷写失败、刷了别的 uf2、或仍停在 bootloader）
+   - 见下方 [LED 含义](#led-含义) 与 [故障排查](#故障排查)
+
+### 你描述的现象（拷完又红灯呼吸、无串口）
+
+| 步骤 | 现象 | 含义 |
+|------|------|------|
+| 双击 RST | 红灯渐变 + U 盘 | bootloader 正常 |
+| 拖入 uf2 | U 盘消失 | bootloader **接收了文件**（不等于应用能跑） |
+| 紧接着 | **红灯又渐变** + 蓝灯闪 | 应用**启动失败**，又回到 bootloader；或闪一下后跑旧程序 |
+| 重新上电 | 仅蓝灯闪、**无新 COM** | **本固件未在运行**（仍是旧 BLE/其它程序，或空应用区） |
+
+这几乎总是 **UF2 链接地址不对**：出厂 SoftDevice 占 `0x00000–0x26000`，应用必须从 **`0x26000`** 开始。  
+用 NCS 默认 Partition Manager 编出来的 uf2 常从 `0x0`/`0x1000` 起，bootloader 写完后跳转失败 → 你看到的正是这种现象。
+
+**处理：**
+
+1. 拉最新代码，用脚本重编（已带 [`pm_static.yml`](pm_static.yml)）：
+
+   ```bash
+   ./scripts/build-promicro.sh
+   ```
+
+2. 编译结束应打印类似：
+
+   ```text
+   CONFIG_FLASH_LOAD_OFFSET=0x26000
+   UF2 first target_addr=0x00026000
+   OK: UF2 start address matches SoftDevice gap
+   ```
+
+   若不是 `0x26000`，**不要刷**。
+
+3. 只刷新生成的 `examples/promicro_nrf52840/build/zephyr/zephyr.uf2`
+
+4. 成功标志：上电后**红灯不再持续呼吸**，PC 出现 COM，串口有 `=== ProMicro Unifying CLI ===`
+
+### 其它现象解读
+
+| 现象 | 更可能的含义 |
+|------|----------------|
+| 刷写时红灯渐变 + 出 U 盘 | 正常 bootloader |
+| 重启后蓝灯一直闪、无 COM | 未跑本固件（旧固件或刷写地址错误） |
+| 优联接收器“扫描不到” | 正常；优联不是 BLE，需串口 `pair` |
+
+**下一步：** 用带 `pm_static.yml` 的新 uf2 重刷，先通串口再配对。
 
 ## 编译
 
 ### GitHub Codespaces（推荐云端编译）
 
-1. 在 GitHub 打开本仓库 → **Code** → **Codespaces** → **Create codespace on main**
-2. 机器类型选可用的即可（如 2-core）；不要选「无」
-3. 首次创建会激活镜像内 toolchain（Codespaces 会覆盖 ENTRYPOINT，脚本用 `nrfutil toolchain-manager env` 补齐 PATH），并使用镜像预装的 `/workdir` NCS
-4. 若创建失败，可在终端手动：`bash .devcontainer/post-create.sh` 后 `./scripts/build-promicro.sh`
-5. 终端执行：
+1. 打开仓库 → **Code** → **Codespaces** → **Create codespace on main**
+2. 机器类型选可用项（如 2-core），不要选「无」
+3. 首次创建会激活镜像 toolchain（Codespaces 覆盖 ENTRYPOINT，脚本用 `nrfutil` 补 PATH），并使用镜像预装的 `/workdir` NCS
+4. 若 `postCreate` 失败，终端执行：`bash .devcontainer/post-create.sh`
+5. 编译：
 
 ```bash
 ./scripts/build-promicro.sh
 ```
 
-产物：`examples/promicro_nrf52840/build/zephyr/zephyr.uf2`（或 `.hex`）。可从 Codespaces 下载后 UF2 烧录。
+产物：`examples/promicro_nrf52840/build/zephyr/zephyr.uf2`。脚本会检查 **UF2 起始地址必须是 `0x26000`**。
 
-可选环境变量：
+可选板型：
 
 ```bash
 BOARD=nice_nano_v2 ./scripts/build-promicro.sh
-USE_STORAGE_OVERLAY=1 ./scripts/build-promicro.sh
 ```
+
+> 不要再依赖 `storage.overlay` 改分区；存储区已写在 [`pm_static.yml`](pm_static.yml) 里。
 
 ### 本地 west
 
-在 NCS 的 west workspace 中执行（把路径换成你的仓库位置）：
+```bat
+west build -b promicro_nrf52840/nrf52840/uf2 <仓库>\examples\promicro_nrf52840 -p always
+```
+
+备选板型：
 
 ```bat
-west build -b promicro_nrf52840/nrf52840/uf2 D:\wlt\project\test\unifying\examples\promicro_nrf52840 -p always
+west build -b promicro_nrf52840/nrf52840 ...
+west build -b nice_nano_v2 ...
 ```
 
-若板型名不同，可试：
+### NVS / 分区
 
-```bat
-west build -b promicro_nrf52840/nrf52840 D:\wlt\project\test\unifying\examples\promicro_nrf52840
-west build -b nice_nano_v2 D:\wlt\project\test\unifying\examples\promicro_nrf52840
-```
+NCS 下用 [`pm_static.yml`](pm_static.yml) 固定 Adafruit UF2 + SoftDevice 布局（应用 `@0x26000`）。  
+不要用会覆盖整片 flash 分区的随意 overlay，以免再次刷不进应用。
 
-产物：
+### 较新 USB 栈（NCS 3 / Zephyr 4）
 
-- UF2：`build/zephyr/zephyr.uf2`（uf2 目标）
-- 或 HEX：`build/zephyr/zephyr.hex`
+若旧 `CONFIG_USB_DEVICE_STACK` 不可用，见 `prj.conf` 注释，改为 `CONFIG_USB_DEVICE_STACK_NEXT` + `CONFIG_CDC_ACM_SERIAL_INITIALIZE_AT_BOOT`。
 
-### NVS / storage 分区
+## 烧录（UF2）逐步
 
-默认依赖 DTS / Partition Manager 的 `storage_partition`。若链接报找不到该分区，可追加 overlay：
+1. USB 插入 PC
+2. **快速短接 GND–RST 两次** → 红灯呼吸，出现 UF2 U 盘
+3. 将 **本仓库编译出的** `zephyr.uf2` 拷入（不要用错文件）
+4. 等待自动复位（U 盘消失）
+5. **按上面的检查清单确认 COM 口 + CLI banner**
+6. 再进行优联配对（下一节）
 
-```bat
-west build -b promicro_nrf52840/nrf52840/uf2 ... -- -DEXTRA_DTC_OVERLAY_FILE=storage.overlay
-```
-
-若与板级分区冲突，删除或不要使用 `storage.overlay`。
-
-### 较新 Zephyr USB 栈（NCS 3 / Zephyr 4）
-
-若 `CONFIG_USB_DEVICE_STACK` 已废弃，请把 [`prj.conf`](prj.conf) 中 USB 段改成：
-
-```conf
-CONFIG_USB_DEVICE_STACK_NEXT=y
-CONFIG_CDC_ACM_SERIAL_INITIALIZE_AT_BOOT=y
-CONFIG_SERIAL=y
-CONFIG_CONSOLE=y
-CONFIG_UART_CONSOLE=y
-CONFIG_UART_LINE_CTRL=y
-```
-
-并去掉旧的 `CONFIG_USB_CDC_ACM` / `CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT` 等项。
-
-## 烧录（UF2）
-
-1. 快速短接 **GND–RST 两次**，LED 进入呼吸/渐变 → 出现 U 盘
-2. 将 `zephyr.uf2` 拷入该盘
-3. 板子复位后，PC 应枚举出 **USB 串口（CDC ACM）**
-
-也可用 `west flash`（需 J-Link / pyocd，见板级文档）。
+也可用调试器：`west flash`（J-Link / pyocd）。
 
 ## 串口命令
 
-打开对应 COM 口，115200，发送行以 `\n` 结尾。
+打开 COM，115200 8N1，每行以换行结束。
 
 | 命令 | 说明 |
 |------|------|
 | `help` | 帮助 |
 | `status` | `mode` / 是否已配对 / 信道 / 上次错误 |
-| `pair` | 先让接收器进入配对，再执行 |
+| `pair` | **先**让接收器进入配对，再执行 |
 | `sleep` | 主动休眠 |
 | `wake` | 唤醒并重连 |
-| `key <name>` | 发送按键，如 `key a`、`key enter`、`key ctrl+c` |
+| `key <name>` | 按键，如 `key a`、`key enter`、`key ctrl+c` |
 | `unpair` | 擦除 NVS 凭证 |
 
-成功回 `OK`，失败回 `ERR ...`。
+成功 `OK`，失败 `ERR ...`。
 
-### 支持的按键名
+### 按键名
 
 - `a`–`z`、`0`–`9`
 - `enter` `esc` `space` `tab` `bspc`
-- `f1`–`f12`、方向键 `left` `right` `up` `down`
-- 修饰键组合：`shift+a`、`ctrl+c`、`alt+tab`、`gui+e`
+- `f1`–`f12`、`left` `right` `up` `down`
+- 组合：`shift+a`、`ctrl+c`、`alt+tab`、`gui+e`
 
-## 测试步骤
+## 测试步骤（串口确认后再做）
 
 ### 1. 配对
 
-1. 插入 Unifying 接收器，按下接收器配对按钮
-2. 串口发送：`pair`
-3. 成功应 `OK`；罗技软件中可能出现设备名 **ProMicroKB**
-4. `status` 应显示 `mode=connected paired=yes`
+1. PC 串口已能 `help` / `status`
+2. 插入 Unifying 接收器，**按接收器上的配对按钮**（指示灯按接收器说明闪烁）
+3. 串口发送：`pair`
+4. 成功：`OK`；`status` → `mode=connected paired=yes`
+5. 可选：罗技 Unifying 软件中查看是否出现 **ProMicroKB**
 
 ### 2. 按键
 
-1. 焦点放在记事本
-2. 发送 `key a`、`key shift+a`、`key enter`
-3. 主机应打出对应字符
+记事本聚焦后：`key a`、`key shift+a`、`key enter`。
 
 ### 3. 主动休眠
 
-1. `sleep` → `OK`，`status` 为 `sleeping`
-2. 一段时间后接收器侧设备应掉线（无 keep-alive）
+`sleep` → `status` 为 `sleeping`；一段时间后主机侧设备应掉线。
 
-### 4. 休眠后重连
+### 4. 休眠重连
 
-1. `wake` → `OK`，`status` 为 `connected`
-2. 再 `key a` 应恢复输入
+`wake` → `connected` → 再 `key a`。
 
 ### 5. 断电重连
 
-1. 已配对后拔掉 USB（或按 RST）
-2. 再插电；固件自动 `connect`（无需先开串口，keep-alive 仍会跑）
-3. 打开串口，`status` 应为 `connected`
-4. `key a` 可用
+已配对后拔 USB / 按 RST → 再插电 → 开串口 `status` 应为 `connected`。
 
-## 架构说明
+## 架构
 
 ```
 PC 串口 ──USB CDC──► usb_cli ──► app 状态机
@@ -171,25 +228,43 @@ PC 串口 ──USB CDC──► usb_cli ──► app 状态机
                             Unifying 接收器
 ```
 
-协议库源码直接编译自仓库 [`../../src`](../../src)（不含桌面空 `main.c`）。
-射频参数对齐 Arduino 示例：2 Mbps、CRC-16、5 字节地址、动态长度、ACK、自动重传。
+协议源码来自 [`../../src`](../../src)。射频：2 Mbps、CRC-16、5 字节地址、动态长度、ACK、自动重传。
 
-## LED
+## LED 含义
 
-板载 `led0`（文档为 P0.15）：
+克隆板红/蓝灯可能对应不同 GPIO；以行为为准。
 
-- 已连接：常亮
-- 休眠 / idle：灭
-- 配对 / 发键：闪烁
+| 状态 | 典型表现 |
+|------|----------|
+| UF2 bootloader | **红灯呼吸/渐变**，出 U 盘 |
+| 本固件 idle / 未配对 / sleep | **灯灭**（或极暗） |
+| 本固件已连接优联 | **常亮**（`led0`，文档脚 P0.15，颜色因板而异） |
+| 本固件配对中 / 发键 | **短闪几下**，不是一直闪 |
+| 出厂 BLE / 其它固件 | 常见 **蓝灯持续闪烁** ← 说明还在跑旧程序 |
 
 ## 故障排查
 
-| 现象 | 排查 |
+| 现象 | 处理 |
 |------|------|
-| `pair` 一直失败 | 接收器是否在配对态；距离；地址字节序；重传参数 |
-| 编译找不到 `esb.h` | 必须在 NCS 环境，不能只用上游 Zephyr |
-| 无 COM 口 | 确认 CDC overlay；驱动；是否进了 UF2 而不是应用 |
-| NVS 失败 | 检查 `storage_partition` / 使用 `storage.overlay` |
-| 配对成功但不能打字 | AES 密钥是否正确保存；`status` 是否 connected；试 `wake` |
+| U 盘消失后又红灯呼吸、无 COM | **链接地址错**：用 `./scripts/build-promicro.sh` 重编，确认 UF2 `@0x26000` 再刷 |
+| 蓝灯一直闪、无 COM | 同上；确认刷的是新生成的 `zephyr.uf2` |
+| 有 U 盘但拷完不重启 | 换线/口；确认文件是 uf2 |
+| 有 COM 但无 banner | 打开串口后发回车；确认 115200；勾选 DTR |
+| `help` 无响应 | 换行用 LF；确认 COM 口 |
+| 接收器“扫不到” | **不要扫**。先串口通，再 `pair` |
+| `pair` 失败 | 接收器配对键；贴近；看 `status` 的 `last_err` |
+| VID/PID 不是 1915:520F | 仍是 bootloader 或其它固件 |
+| 编译无 `esb.h` | 必须在 NCS / Codespaces 中编 |
+| NVS 报错 | 使用仓库内 `pm_static.yml`（已含 storage） |
+
+### Windows 快速看 USB 设备
+
+- 设备管理器 → 端口 (COM 和 LPT) → 是否有新 COM  
+- 或 PowerShell：
+
+```powershell
+Get-PnpDevice -Class Ports | Format-Table -AutoSize
+# 可选：查看 USB 描述（需安装对应工具）或在“通用串行总线设备”里找 ProMicro Unifying
+```
 
 仅用于测试自有接收器与自制外设，请遵守当地无线电法规。
