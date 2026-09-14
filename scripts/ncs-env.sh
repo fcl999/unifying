@@ -23,7 +23,14 @@ ncs_activate() {
 		if nrfutil toolchain-manager env --as-script --ncs-version "${NCS_VERSION}" >"${env_script}" 2>/dev/null \
 			|| nrfutil toolchain-manager env --as-script >"${env_script}" 2>/dev/null; then
 			# shellcheck disable=SC1090
+			local nounset_enabled=0
+			case "$-" in
+				*u*) nounset_enabled=1; set +u ;;
+			esac
 			source "${env_script}"
+			if [[ ${nounset_enabled} -eq 1 ]]; then
+				set -u
+			fi
 		fi
 		rm -f "${env_script}"
 	fi

@@ -86,7 +86,7 @@ static void drain_esb_rx(void)
 	}
 }
 
-static void esb_event_handler(const struct esb_evt *event)
+static void radio_esb_event_handler(const struct esb_evt *event)
 {
 	switch (event->evt_id) {
 	case ESB_EVENT_TX_SUCCESS:
@@ -148,7 +148,7 @@ static int esb_configure(void)
 
 	config.protocol = ESB_PROTOCOL_ESB_DPL;
 	config.mode = ESB_MODE_PTX;
-	config.event_handler = esb_event_handler;
+	config.event_handler = radio_esb_event_handler;
 	config.bitrate = ESB_BITRATE_2MBPS;
 	config.crc = ESB_CRC_16BIT;
 	config.tx_output_power = 4; /* ~+4 dBm，接近 RF24 PA_MAX */
