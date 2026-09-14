@@ -29,7 +29,8 @@
 - 板子：`promicro_nrf52840`（或同引脚的 Nice!Nano / SuperMini 克隆板）
 - 罗技 Unifying 接收器（自用测试）
 - PC：Windows 串口助手 / PuTTY（**115200 8N1**，换行建议发 `\n`）
-- SDK：nRF Connect SDK **2.9+** 或 **3.x**（无该板型时可用 `nice_nano_v2`）
+- SDK：nRF Connect SDK **3.4.0**，必须包含 `promicro_nrf52840` board 定义。
+- 本项目不使用 `nice_nano_v2` fallback；若找不到该板型，应先修复 SDK 环境。
 
 **不要启用 Bluetooth**：RADIO 与 ESB 互斥。出厂 SoftDevice / UF2 bootloader 可保留，应用侧 `CONFIG_BT=n`。
 
@@ -93,7 +94,7 @@
 
    若不是 `0x26000`，**不要刷**。
 
-3. 只刷新生成的 `examples/promicro_nrf52840/build/zephyr/zephyr.uf2`
+3. 只刷新生成的 `examples/promicro_nrf52840/build/promicro_nrf52840/zephyr/zephyr.uf2`
 
 4. 成功标志：上电后**红灯不再持续呼吸**，PC 出现 COM，串口有 `=== ProMicro Unifying CLI ===`
 
@@ -113,7 +114,7 @@
 
 1. 打开仓库 → **Code** → **Codespaces** → **Create codespace on main**
 2. 机器类型选可用项（如 2-core），不要选「无」
-3. 首次创建会激活镜像 toolchain（Codespaces 覆盖 ENTRYPOINT，脚本用 `nrfutil` 补 PATH），并使用镜像预装的 `/workdir` NCS
+3. 初始化会激活 `/root/ncs/v3.4.0` toolchain；脚本不会使用 NCS 2.9 的 `/workdir`，也不会自动切换到其他 board
 4. 若 `postCreate` 失败，终端执行：`bash .devcontainer/post-create.sh`
 5. 编译：
 
@@ -121,13 +122,7 @@
 ./scripts/build-promicro.sh
 ```
 
-产物：`examples/promicro_nrf52840/build/zephyr/zephyr.uf2`。脚本会检查 **UF2 起始地址必须是 `0x26000`**。
-
-可选板型：
-
-```bash
-BOARD=nice_nano_v2 ./scripts/build-promicro.sh
-```
+产物：`examples/promicro_nrf52840/build/promicro_nrf52840/zephyr/zephyr.uf2`。脚本会检查 **UF2 起始地址必须是 `0x26000`**。
 
 > 不要再依赖 `storage.overlay` 改分区；存储区已写在 [`pm_static.yml`](pm_static.yml) 里。
 
@@ -137,12 +132,7 @@ BOARD=nice_nano_v2 ./scripts/build-promicro.sh
 west build -b promicro_nrf52840/nrf52840/uf2 <仓库>\examples\promicro_nrf52840 -p always
 ```
 
-备选板型：
-
-```bat
-west build -b promicro_nrf52840/nrf52840 ...
-west build -b nice_nano_v2 ...
-```
+板型固定为 `promicro_nrf52840/nrf52840/uf2`，不使用其他 board fallback。
 
 ### NVS / 分区
 

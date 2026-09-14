@@ -17,6 +17,9 @@ else
 	ncs_activate
 fi
 
+ncs_select_promicro
+ncs_activate
+
 BOARD="${BOARD:-promicro_nrf52840/nrf52840/uf2}"
 
 if [[ ! -d "${NCS_DIR}/zephyr" && ! -d "${NCS_DIR}/.west" ]]; then
@@ -39,12 +42,13 @@ run_build() {
 }
 
 verify_load_offset() {
-	local cfg="${BUILD_DIR}/zephyr/.config"
+	local APP_BUILD_DIR="${BUILD_DIR}/${BOARD%%/*}"
+	local cfg="${APP_BUILD_DIR}/zephyr/.config"
 	local offset=""
 
-	if [[ -f "${BUILD_DIR}/partitions.yml" ]]; then
+	if [[ -f "${APP_BUILD_DIR}/partitions.yml" ]]; then
 		echo "==> partitions.yml (app region):"
-		grep -A6 '^app:' "${BUILD_DIR}/partitions.yml" || true
+		grep -A6 '^app:' "${APP_BUILD_DIR}/partitions.yml" || true
 	fi
 
 	if [[ -f "${cfg}" ]]; then
@@ -57,10 +61,10 @@ verify_load_offset() {
 		fi
 	fi
 
-	if [[ -f "${BUILD_DIR}/zephyr/zephyr.uf2" ]]; then
-		echo "==> UF2 ready: ${BUILD_DIR}/zephyr/zephyr.uf2"
+	if [[ -f "${APP_BUILD_DIR}/zephyr/zephyr.uf2" ]]; then
+		echo "==> UF2 ready: ${APP_BUILD_DIR}/zephyr/zephyr.uf2"
 		# Optional: parse first UF2 block target address if Python available
-		python3 - <<'PY' "${BUILD_DIR}/zephyr/zephyr.uf2" || true
+		python3 - <<'PY' "${APP_BUILD_DIR}/zephyr/zephyr.uf2" || true
 import struct, sys
 path = sys.argv[1]
 with open(path, "rb") as f:
@@ -87,11 +91,9 @@ run_build "${BOARD}"
 STATUS=$?
 set -e
 
-if [[ ${STATUS} -ne 0 && "${BOARD}" == promicro_nrf52840* ]]; then
-	echo
-	echo "==> Build failed with ${BOARD}, retrying nice_nano_v2..."
-	BOARD="nice_nano_v2"
-	run_build "${BOARD}"
+if [[ ${STATUS} -ne 0 ]]; then
+	echo "ERROR: build failed for ${BOARD}; no fallback board will be tried." >&2
+	exit ${STATUS}
 fi
 
 echo
@@ -99,10 +101,10 @@ verify_load_offset
 
 echo
 echo "==> Build finished (board=${BOARD})."
-if [[ -f "${BUILD_DIR}/zephyr/zephyr.uf2" ]]; then
+if [[ -f "${BUILD_DIR}/${BOARD%%/*}/zephyr/zephyr.uf2" ]]; then
 	echo "    Flash ONLY this file via UF2 drive:"
-	echo "    ${BUILD_DIR}/zephyr/zephyr.uf2"
+	echo "    ${BUILD_DIR}/${BOARD%%/*}/zephyr/zephyr.uf2"
 fi
-if [[ -f "${BUILD_DIR}/zephyr/zephyr.hex" ]]; then
-	echo "    HEX: ${BUILD_DIR}/zephyr/zephyr.hex"
+if [[ -f "${BUILD_DIR}/${BOARD%%/*}/zephyr/zephyr.hex" ]]; then
+	echo "    HEX: ${BUILD_DIR}/${BOARD%%/*}/zephyr/zephyr.hex"
 fi

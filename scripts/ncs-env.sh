@@ -3,7 +3,11 @@
 # shellcheck shell=bash
 
 ncs_activate() {
-	export NRFUTIL_HOME="${NRFUTIL_HOME:-/usr/local/share/nrfutil}"
+	if [[ -d /usr/local/share/nrfutil ]]; then
+		export NRFUTIL_HOME=/usr/local/share/nrfutil
+	else
+		export NRFUTIL_HOME="${NRFUTIL_HOME:-/usr/local/share/nrfutil}"
+	fi
 	export NCS_VERSION="${NCS_VERSION:-v2.9.0}"
 
 	if [[ -z "${NCS_DIR:-}" ]]; then
@@ -19,6 +23,7 @@ ncs_activate() {
 
 	if command -v nrfutil >/dev/null 2>&1; then
 		local env_script
+		local configured_nrfutil_home="${NRFUTIL_HOME}"
 		env_script="$(mktemp)"
 		if nrfutil toolchain-manager env --as-script --ncs-version "${NCS_VERSION}" >"${env_script}" 2>/dev/null \
 			|| nrfutil toolchain-manager env --as-script >"${env_script}" 2>/dev/null; then
@@ -28,6 +33,7 @@ ncs_activate() {
 				*u*) nounset_enabled=1; set +u ;;
 			esac
 			source "${env_script}"
+			export NRFUTIL_HOME="${configured_nrfutil_home}"
 			if [[ ${nounset_enabled} -eq 1 ]]; then
 				set -u
 			fi
@@ -58,6 +64,19 @@ ncs_activate() {
 	echo "PATH=${PATH}" >&2
 	command -v nrfutil && nrfutil toolchain-manager list || true
 	return 127
+}
+
+ncs_select_promicro() {
+	if [[ -d /root/ncs/v3.4.0/zephyr/boards/others/promicro_nrf52840 ]]; then
+		export NCS_DIR=/root/ncs/v3.4.0
+		export NCS_VERSION=v3.4.0
+	elif [[ -d "${NCS_DIR:-}/zephyr/boards/others/promicro_nrf52840" ]]; then
+		:
+	else
+		echo "ERROR: NCS 3.4.0 with promicro_nrf52840 board support is required." >&2
+		echo "       Expected: /root/ncs/v3.4.0" >&2
+		return 1
+	fi
 }
 
 # Run a command with west available (handles launch fallback).

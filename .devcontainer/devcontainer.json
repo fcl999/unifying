@@ -24,13 +24,13 @@
   "forwardPorts": [],
   "onCreateCommand": "echo 'Preparing nRF Connect SDK Codespace...'",
   "remoteEnv": {
-    "NCS_VERSION": "v2.9.0",
-    "NCS_DIR": "/workdir",
+    "NCS_VERSION": "v3.4.0",
+    "NCS_DIR": "/root/ncs/v3.4.0",
     "NRFUTIL_HOME": "/usr/local/share/nrfutil"
   },
   "containerEnv": {
-    "NCS_VERSION": "v2.9.0",
-    "NCS_DIR": "/workdir",
+    "NCS_VERSION": "v3.4.0",
+    "NCS_DIR": "/root/ncs/v3.4.0",
     "NRFUTIL_HOME": "/usr/local/share/nrfutil"
   }
 }

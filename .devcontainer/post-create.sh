@@ -6,9 +6,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/scripts/ncs-env.sh"
 
-export NCS_VERSION="${NCS_VERSION:-v2.9.0}"
-export NCS_DIR="${NCS_DIR:-/workdir}"
+export NCS_VERSION="${NCS_VERSION:-v3.4.0}"
+export NCS_DIR="${NCS_DIR:-/root/ncs/v3.4.0}"
 export NRFUTIL_HOME="${NRFUTIL_HOME:-/usr/local/share/nrfutil}"
+
+ncs_select_promicro
 
 echo "==> Repo: ${REPO_ROOT}"
 echo "==> Activating nRF toolchain (nrfutil)..."
@@ -19,14 +21,8 @@ echo "==> NCS_DIR=${NCS_DIR}"
 echo "==> west check..."
 ncs_run 'west --version'
 
-# nordicplayground image already ran west init under /workdir during docker build.
-if [[ ! -d "${NCS_DIR}/zephyr" ]]; then
-	echo "==> No pre-baked SDK at ${NCS_DIR}, initializing..."
-	ncs_run "west init -m https://github.com/nrfconnect/sdk-nrf --mr ${NCS_VERSION} . && west update --narrow -o=--depth=1 && west zephyr-export || true"
-else
-	echo "==> Using pre-baked / existing SDK at ${NCS_DIR}"
-	ncs_run 'west zephyr-export || true'
-fi
+echo "==> Using existing NCS ${NCS_VERSION} at ${NCS_DIR}"
+ncs_run 'west zephyr-export || true'
 
 # Re-activate after possible init
 ncs_activate
