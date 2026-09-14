@@ -36,7 +36,7 @@ echo "    pm_static=${PM_STATIC}"
 run_build() {
 	local board="$1"
 	local cmd
-	# Force Adafruit UF2 flash map so app links at 0x26000 (SoftDevice S140 gap).
+	# Force SuperMini UF2 flash map so app links at 0x27000 (SoftDevice S140 v7 gap).
 	cmd="west build -p always -b ${board} ${APP_DIR} -d ${BUILD_DIR} -- -DPM_STATIC_YML_FILE=${PM_STATIC}"
 	ncs_run "${cmd}"
 }
@@ -54,8 +54,8 @@ verify_load_offset() {
 	if [[ -f "${cfg}" ]]; then
 		offset="$(grep -E '^CONFIG_FLASH_LOAD_OFFSET=' "${cfg}" | cut -d= -f2 || true)"
 		echo "==> CONFIG_FLASH_LOAD_OFFSET=${offset:-<missing>}"
-		if [[ -n "${offset}" && "${offset}" != "0x26000" && "${offset}" != "155648" ]]; then
-			echo "ERROR: flash load offset is not 0x26000 — UF2 will boot-loop back to bootloader."
+		if [[ -n "${offset}" && "${offset}" != "0x27000" && "${offset}" != "159744" ]]; then
+			echo "ERROR: flash load offset is not 0x27000 — UF2 will boot-loop back to bootloader."
 			echo "        Do not flash this image. Check pm_static.yml / board target."
 			return 1
 		fi
@@ -64,7 +64,7 @@ verify_load_offset() {
 	if [[ -f "${APP_BUILD_DIR}/zephyr/zephyr.uf2" ]]; then
 		echo "==> UF2 ready: ${APP_BUILD_DIR}/zephyr/zephyr.uf2"
 		# Optional: parse first UF2 block target address if Python available
-		python3 - <<'PY' "${APP_BUILD_DIR}/zephyr/zephyr.uf2" || true
+		python3 - <<'PY' "${APP_BUILD_DIR}/zephyr/zephyr.uf2"
 import struct, sys
 path = sys.argv[1]
 with open(path, "rb") as f:
@@ -76,8 +76,8 @@ if len(block) < 32 or block[0:4] != b"UF2\n":
 target = struct.unpack_from("<I", block, 12)[0]
 family = struct.unpack_from("<I", block, 28)[0]
 print(f"==> UF2 first target_addr=0x{target:08X} family=0x{family:08X}")
-if target != 0x26000:
-    print("ERROR: UF2 target address must be 0x26000 for Adafruit/Nice!Nano SoftDevice boards")
+if target != 0x27000:
+    print("ERROR: UF2 target address must be 0x27000 for SuperMini S140 v7 boards")
     raise SystemExit(1)
 print("OK: UF2 start address matches SoftDevice gap")
 PY

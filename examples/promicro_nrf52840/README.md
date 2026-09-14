@@ -73,7 +73,7 @@
 | 紧接着 | **红灯又渐变** + 蓝灯闪 | 应用**启动失败**，又回到 bootloader；或闪一下后跑旧程序 |
 | 重新上电 | 仅蓝灯闪、**无新 COM** | **本固件未在运行**（仍是旧 BLE/其它程序，或空应用区） |
 
-这几乎总是 **UF2 链接地址不对**：出厂 SoftDevice 占 `0x00000–0x26000`，应用必须从 **`0x26000`** 开始。  
+这几乎总是 **UF2 链接地址不对**：SuperMini 的 S140 7.3.0 占 `0x00000–0x27000`，应用必须从 **`0x27000`** 开始。
 用 NCS 默认 Partition Manager 编出来的 uf2 常从 `0x0`/`0x1000` 起，bootloader 写完后跳转失败 → 你看到的正是这种现象。
 
 **处理：**
@@ -87,12 +87,12 @@
 2. 编译结束应打印类似：
 
    ```text
-   CONFIG_FLASH_LOAD_OFFSET=0x26000
-   UF2 first target_addr=0x00026000
-   OK: UF2 start address matches SoftDevice gap
+   CONFIG_FLASH_LOAD_OFFSET=0x27000
+   UF2 first target_addr=0x00027000
+   OK: UF2 start address matches SuperMini S140 v7 gap
    ```
 
-   若不是 `0x26000`，**不要刷**。
+   若不是 `0x27000`，**不要刷**。
 
 3. 只刷新生成的 `examples/promicro_nrf52840/build/promicro_nrf52840/zephyr/zephyr.uf2`
 
@@ -122,7 +122,7 @@
 ./scripts/build-promicro.sh
 ```
 
-产物：`examples/promicro_nrf52840/build/promicro_nrf52840/zephyr/zephyr.uf2`。脚本会检查 **UF2 起始地址必须是 `0x26000`**。
+产物：`examples/promicro_nrf52840/build/promicro_nrf52840/zephyr/zephyr.uf2`。脚本会检查 **UF2 起始地址必须是 `0x27000`**。
 
 > 不要再依赖 `storage.overlay` 改分区；存储区已写在 [`pm_static.yml`](pm_static.yml) 里。
 
@@ -136,7 +136,7 @@ west build -b promicro_nrf52840/nrf52840/uf2 <仓库>\examples\promicro_nrf52840
 
 ### NVS / 分区
 
-NCS 下用 [`pm_static.yml`](pm_static.yml) 固定 Adafruit UF2 + SoftDevice 布局（应用 `@0x26000`）。  
+NCS 下用 [`pm_static.yml`](pm_static.yml) 固定 SuperMini UF2 + S140 v7 布局（应用 `@0x27000`）。
 不要用会覆盖整片 flash 分区的随意 overlay，以免再次刷不进应用。
 
 ### 较新 USB 栈（NCS 3 / Zephyr 4）
@@ -236,7 +236,7 @@ PC 串口 ──USB CDC──► usb_cli ──► app 状态机
 
 | 现象 | 处理 |
 |------|------|
-| U 盘消失后又红灯呼吸、无 COM | **链接地址错**：用 `./scripts/build-promicro.sh` 重编，确认 UF2 `@0x26000` 再刷 |
+| U 盘消失后又红灯呼吸、无 COM | **链接地址错**：用 `./scripts/build-promicro.sh` 重编，确认 UF2 `@0x27000` 再刷 |
 | 蓝灯一直闪、无 COM | 同上；确认刷的是新生成的 `zephyr.uf2` |
 | 有 U 盘但拷完不重启 | 换线/口；确认文件是 uf2 |
 | 有 COM 但无 banner | 打开串口后发回车；确认 115200；勾选 DTR |

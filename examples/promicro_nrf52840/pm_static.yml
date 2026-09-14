@@ -1,20 +1,20 @@
-# Adafruit / Nice!Nano / Pro Micro nRF52840 UF2 + SoftDevice S140 v6 layout
-# App MUST start at 0x26000. Wrong offset => UF2 copy "succeeds", then red breathing
+# SuperMini nRF52840 UF2 + SoftDevice S140 v7.3.0 layout
+# App MUST start at 0x27000. Wrong offset => UF2 copy "succeeds", then red breathing
 # again / blue blink, and no CDC serial port.
 #
-# https://github.com/zephyrproject-rtos/zephyr/blob/main/dts/vendor/nordic/nrf52840_partition_uf2_sdv6.dtsi
+# https://github.com/zephyrproject-rtos/zephyr/blob/main/dts/vendor/nordic/nrf52840_partition_uf2_sdv7.dtsi
 
 sd_partition:
   address: 0x0
-  end_address: 0x26000
+  end_address: 0x27000
   region: flash_primary
-  size: 0x26000
+  size: 0x27000
 
 app:
-  address: 0x26000
+  address: 0x27000
   end_address: 0xec000
   region: flash_primary
-  size: 0xc6000
+  size: 0xc5000
 
 storage:
   address: 0xec000

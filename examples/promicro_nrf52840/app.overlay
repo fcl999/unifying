@@ -4,3 +4,15 @@
 		zephyr,shell-uart = &board_cdc_acm_uart;
 	};
 };
+
+/* SuperMini uses SoftDevice S140 v7.3.0; replace the board's v6 code node. */
+&flash0 {
+	partitions {
+		/delete-node/ partition@26000;
+
+		code_partition: partition@27000 {
+			label = "Application";
+			reg = <0x00027000 0x000c5000>;
+		};
+	};
+};
