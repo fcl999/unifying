@@ -17,7 +17,7 @@ Pro Micro nRF52840 (nRF Connect SDK + ESB + USB CDC) example:
 ## GitHub Codespaces
 
 Open this repo in [Codespaces](https://github.com/codespaces) (uses [`nordicplayground/nrfconnect-sdk:v2.9-branch`](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk)).
-First create runs `.devcontainer/post-create.sh` to fetch nRF Connect SDK (needs a 16GB+ / 64GB storage machine).
+First create runs `.devcontainer/post-create.sh` to fetch nRF Connect SDK (prefer 2+ core machine; NCS download needs enough disk).
 
 ```bash
 ./scripts/build-promicro.sh

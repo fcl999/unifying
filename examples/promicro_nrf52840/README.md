@@ -30,8 +30,8 @@
 ### GitHub Codespaces（推荐云端编译）
 
 1. 在 GitHub 打开本仓库 → **Code** → **Codespaces** → **Create codespace on main**
-2. 选用至少 **4 vCPU / 16GB RAM / 64GB 磁盘**（`.devcontainer` 已声明）
-3. 首次创建会拉取 [nordicplayground/nrfconnect-sdk:v2.9-branch](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk) 并执行 `west update`（可能需 10–20 分钟）
+2. 机器类型选可用的即可（如 2-core）；不要选「无」
+3. 首次创建会拉取 [nordicplayground/nrfconnect-sdk:v2.9-branch](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk) 并执行 `west update`（可能需 10–20 分钟；磁盘紧张时可在创建后清理）
 4. 终端执行：
 
 ```bash

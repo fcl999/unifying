@@ -2,11 +2,6 @@
   "name": "Unifying Firmware (nRF Connect SDK)",
   "image": "docker.io/nordicplayground/nrfconnect-sdk:v2.9-branch",
   "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "hostRequirements": {
-    "cpus": 4,
-    "memory": "16gb",
-    "storage": "64gb"
-  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -26,7 +21,6 @@
     }
   },
   "forwardPorts": [],
-  "portsAttributes": {},
   "onCreateCommand": "echo 'Preparing nRF Connect SDK Codespace...'",
   "remoteEnv": {
     "NCS_VERSION": "v2.9.0",
