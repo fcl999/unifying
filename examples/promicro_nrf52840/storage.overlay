@@ -1,0 +1,25 @@
+/*
+ * Optional storage partition for boards that lack one in DTS.
+ * nRF Connect SDK Partition Manager usually provides storage_partition
+ * automatically when CONFIG_NVS=y; this overlay is a fallback for
+ * vanilla Zephyr builds of promicro_nrf52840 / nice_nano class boards.
+ *
+ * If your build already defines storage_partition, west may warn about
+ * duplicate labels — remove this file or the partition block in that case.
+ */
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* Keep bootloader / app layout from board; only ensure a storage label exists.
+		 * 8 KiB at end of 1 MiB flash (adjust if your UF2 layout differs).
+		 */
+		storage_partition: partition@f8000 {
+			label = "storage";
+			reg = <0x000f8000 0x00008000>;
+		};
+	};
+};

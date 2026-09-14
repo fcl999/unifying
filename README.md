@@ -11,6 +11,21 @@ The goal of this project is to enable people to create custom keyboards and mice
 The provided Arduino example is dependent on the RF24 library.
 https://github.com/nRF24/RF24
 
+Pro Micro nRF52840 (nRF Connect SDK + ESB + USB CDC) example:
+[`examples/promicro_nrf52840/`](examples/promicro_nrf52840/)
+
+## GitHub Codespaces
+
+Open this repo in [Codespaces](https://github.com/codespaces) (uses [`nordicplayground/nrfconnect-sdk:v2.9-branch`](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk)).
+First create runs `.devcontainer/post-create.sh` to fetch nRF Connect SDK (needs a 16GB+ / 64GB storage machine).
+
+```bash
+./scripts/build-promicro.sh
+```
+
+Firmware output: `examples/promicro_nrf52840/build/zephyr/zephyr.uf2` (or `.hex`).
+See [examples/promicro_nrf52840/README.md](examples/promicro_nrf52840/README.md).
+
 ## TODO
 - [ ] Add proper HID++ response payloads
 - [ ] Add more examples

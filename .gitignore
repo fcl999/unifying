@@ -54,3 +54,11 @@ dkms.conf
 # Doxygen documentation
 doc/html
 doc/latex
+
+# Build / Codespaces
+build/
+**/build/
+.ncs_env
+*.uf2
+*.map
+
