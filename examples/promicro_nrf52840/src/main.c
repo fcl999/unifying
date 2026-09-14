@@ -316,6 +316,11 @@ int main(void)
 	led_init();
 	LOG_INF("ProMicro Unifying starting");
 
+	err = usb_cli_init();
+	if (err) {
+		LOG_ERR("usb_cli_init: %d", err);
+	}
+
 	err = persist_init();
 	if (err) {
 		LOG_ERR("persist_init: %d", err);
@@ -324,7 +329,6 @@ int main(void)
 	err = radio_esb_init(&g_ctx.interface);
 	if (err) {
 		LOG_ERR("radio_esb_init: %d", err);
-		return 0;
 	}
 
 	g_ctx.transmit_buffer = unifying_ring_buffer_create(TRANSMIT_BUFFER_SIZE);
@@ -359,11 +363,6 @@ int main(void)
 			LOG_WRN("Auto-connect failed: %s",
 				unifying_get_error_name(g_ctx.last_error));
 		}
-	}
-
-	err = usb_cli_init();
-	if (err) {
-		LOG_ERR("usb_cli_init: %d", err);
 	}
 
 	while (1) {
