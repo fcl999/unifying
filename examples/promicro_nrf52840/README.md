@@ -31,8 +31,9 @@
 
 1. 在 GitHub 打开本仓库 → **Code** → **Codespaces** → **Create codespace on main**
 2. 机器类型选可用的即可（如 2-core）；不要选「无」
-3. 首次创建会拉取 [nordicplayground/nrfconnect-sdk:v2.9-branch](https://hub.docker.com/r/nordicplayground/nrfconnect-sdk) 并执行 `west update`（可能需 10–20 分钟；磁盘紧张时可在创建后清理）
-4. 终端执行：
+3. 首次创建会激活镜像内 toolchain（Codespaces 会覆盖 ENTRYPOINT，脚本用 `nrfutil toolchain-manager env` 补齐 PATH），并使用镜像预装的 `/workdir` NCS
+4. 若创建失败，可在终端手动：`bash .devcontainer/post-create.sh` 后 `./scripts/build-promicro.sh`
+5. 终端执行：
 
 ```bash
 ./scripts/build-promicro.sh

@@ -15,7 +15,8 @@
         "files.watcherExclude": {
           "**/ncs/**": true,
           "**/.west/**": true,
-          "**/build/**": true
+          "**/build/**": true,
+          "/workdir/**": true
         }
       }
     }
@@ -24,6 +25,12 @@
   "onCreateCommand": "echo 'Preparing nRF Connect SDK Codespace...'",
   "remoteEnv": {
     "NCS_VERSION": "v2.9.0",
-    "NCS_DIR": "/home/user/ncs"
+    "NCS_DIR": "/workdir",
+    "NRFUTIL_HOME": "/usr/local/share/nrfutil"
+  },
+  "containerEnv": {
+    "NCS_VERSION": "v2.9.0",
+    "NCS_DIR": "/workdir",
+    "NRFUTIL_HOME": "/usr/local/share/nrfutil"
   }
 }

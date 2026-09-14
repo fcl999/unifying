@@ -1,46 +1,50 @@
 #!/usr/bin/env bash
-# Bootstrap nRF Connect SDK west workspace for Codespaces / Dev Containers.
+# Bootstrap Codespace: activate Nordic toolchain and verify pre-baked NCS.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NCS_VERSION="${NCS_VERSION:-v2.9.0}"
-NCS_DIR="${NCS_DIR:-${HOME}/ncs}"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/ncs-env.sh"
+
+export NCS_VERSION="${NCS_VERSION:-v2.9.0}"
+export NCS_DIR="${NCS_DIR:-/workdir}"
+export NRFUTIL_HOME="${NRFUTIL_HOME:-/usr/local/share/nrfutil}"
 
 echo "==> Repo: ${REPO_ROOT}"
-echo "==> NCS:  ${NCS_DIR} (${NCS_VERSION})"
+echo "==> Activating nRF toolchain (nrfutil)..."
 
-mkdir -p "$(dirname "${NCS_DIR}")"
+ncs_activate
 
-if [[ ! -d "${NCS_DIR}/.west" ]]; then
-  echo "==> Initializing west workspace (first run may take a long time)..."
-  mkdir -p "${NCS_DIR}"
-  cd "${NCS_DIR}"
-  west init -m https://github.com/nrfconnect/sdk-nrf --mr "${NCS_VERSION}"
-  west update --narrow -o=--depth=1
-  if command -v west >/dev/null 2>&1; then
-    west zephyr-export || true
-  fi
-  if [[ -f zephyr/scripts/requirements.txt ]]; then
-    pip3 install --user -r zephyr/scripts/requirements.txt || true
-  fi
-  if [[ -f nrf/scripts/requirements.txt ]]; then
-    pip3 install --user -r nrf/scripts/requirements.txt || true
-  fi
+echo "==> NCS_DIR=${NCS_DIR}"
+echo "==> west check..."
+ncs_run 'west --version'
+
+# nordicplayground image already ran west init under /workdir during docker build.
+if [[ ! -d "${NCS_DIR}/zephyr" ]]; then
+	echo "==> No pre-baked SDK at ${NCS_DIR}, initializing..."
+	ncs_run "west init -m https://github.com/nrfconnect/sdk-nrf --mr ${NCS_VERSION} . && west update --narrow -o=--depth=1 && west zephyr-export || true"
 else
-  echo "==> Existing NCS workspace found, skipping west init"
+	echo "==> Using pre-baked / existing SDK at ${NCS_DIR}"
+	ncs_run 'west zephyr-export || true'
 fi
+
+# Re-activate after possible init
+ncs_activate
 
 cat > "${REPO_ROOT}/.ncs_env" <<EOF
 export NCS_DIR="${NCS_DIR}"
 export NCS_VERSION="${NCS_VERSION}"
+export NRFUTIL_HOME="${NRFUTIL_HOME:-/usr/local/share/nrfutil}"
 export REPO_ROOT="${REPO_ROOT}"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/ncs-env.sh"
+ncs_activate
 EOF
 
-chmod +x "${REPO_ROOT}/scripts/build-promicro.sh" 2>/dev/null || true
+chmod +x "${REPO_ROOT}/scripts/"*.sh "${REPO_ROOT}/.devcontainer/"*.sh 2>/dev/null || true
 
 echo
 echo "==> Codespace ready."
-echo "    Build firmware with:"
-echo "      ./scripts/build-promicro.sh"
-echo "    Artifacts land in examples/promicro_nrf52840/build/zephyr/"
+ncs_run 'west --version'
+echo "    Build with: ./scripts/build-promicro.sh"
 echo
