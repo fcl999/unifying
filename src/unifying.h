@@ -115,6 +115,12 @@ enum unifying_error unifying_pair(struct unifying_state* state,
 enum unifying_error unifying_connect(struct unifying_state* state);
 
 /*!
+ * 仅入队 short wake-up，供异步按信道步进连接使用。
+ * 调用前应设好地址与起始信道并清空缓冲。
+ */
+enum unifying_error unifying_connect_begin(struct unifying_state* state);
+
+/*!
  * Queue a payload that sets the timeout for keep-alive packets.
  * 
  * This can be useful for conserving power when the user isn't actively using the device.

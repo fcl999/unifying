@@ -41,9 +41,14 @@ int radio_esb_wake(void);
 bool radio_esb_is_sleeping(void);
 
 /*!
- * 最近一次设置的 RF 信道（Unifying 信道号）。
+ * 最近一次设置的 RF 信道（Unifying 信道号，休眠后仍保留在 RAM）。
  */
 uint8_t radio_esb_current_channel(void);
+
+/*!
+ * 上次使用的信道（RAM）；等同 current，语义上供唤醒优先使用。
+ */
+uint8_t radio_esb_last_channel(void);
 
 #ifdef __cplusplus
 }

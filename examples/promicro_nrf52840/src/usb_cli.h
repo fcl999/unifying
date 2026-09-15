@@ -14,16 +14,16 @@ extern "C" {
 
 struct app_ctx;
 
-/*!
- * 初始化 CDC 控制台 CLI（等待 DTR 后打印 banner）。
- *
- * \return 0 成功。
- */
 int usb_cli_init(void);
 
-/*!
- * 轮询读取一行命令并执行。应在主循环中调用。
- */
+/*! 休眠时禁用 USB。 */
+int usb_cli_suspend(void);
+
+/*! 唤醒后重新使能 USB（需重新打开串口）。 */
+int usb_cli_resume(void);
+
+bool usb_cli_is_suspended(void);
+
 void usb_cli_poll(struct app_ctx *ctx);
 
 #ifdef __cplusplus

@@ -733,6 +733,33 @@ enum unifying_error unifying_pair(struct unifying_state* state,
 enum unifying_error unifying_connect(struct unifying_state* state)
 {
     enum unifying_error err;
+
+    err = unifying_connect_begin(state);
+    if (err) {
+        return err;
+    }
+
+    // We don't know which channel the receiver is listening on.
+    // Try to connect on each channel until one works.
+    for(int i = 0; i < UNIFYING_CHANNELS_LEN; i++)
+    {
+        // Transmit the wake-up (or retry after hop on failure).
+        err = unifying_loop(state, true, true, false);
+
+        // If transmission fails then we'll try again on another channel.
+        if(!err)
+        {
+            // Success.
+            break;
+        }
+    }
+
+    return err;
+}
+
+enum unifying_error unifying_connect_begin(struct unifying_state* state)
+{
+    enum unifying_error err;
     struct unifying_transmit_entry* transmit_entry;
     struct unifying_short_wake_up_request request;
 
@@ -751,23 +778,6 @@ enum unifying_error unifying_connect(struct unifying_state* state)
     if(err)
     {
         unifying_transmit_entry_destroy(transmit_entry);
-        return err;
-    }
-
-    // We don't know which channel the receiver is listening on.
-    // Try to connect on each channel until one works.
-    for(int i = 0; i < UNIFYING_CHANNELS_LEN; i++)
-    {
-        // Transmit the initial paring request.
-        err = unifying_loop(state, true, true, false);
-
-        // If transmission fails then we'll try again on another channel.
-        if(!err)
-        {
-            // Success.
-            // Continue pairing.
-            break;
-        }
     }
 
     return err;

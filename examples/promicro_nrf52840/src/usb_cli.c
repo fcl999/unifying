@@ -16,6 +16,10 @@
 #include <zephyr/sys/ring_buffer.h>
 #include <zephyr/usb/usb_device.h>
 
+#if defined(CONFIG_USB_DEVICE_STACK_NEXT)
+#include <zephyr/drivers/usb/udc.h>
+#endif
+
 #include "app_ctx.h"
 #include "keymap.h"
 #include "radio_esb.h"
@@ -27,12 +31,16 @@ LOG_MODULE_REGISTER(usb_cli, CONFIG_LOG_DEFAULT_LEVEL);
 #define RX_RING_SIZE 256
 
 static const struct device *cdc_dev;
+#if defined(CONFIG_USB_DEVICE_STACK_NEXT)
+static const struct device *udc_dev;
+#endif
 static struct ring_buf rx_ring;
 static uint8_t rx_ring_data[RX_RING_SIZE];
 static char line_buf[LINE_MAX];
 static size_t line_len;
 static bool irq_enabled;
 static bool banner_shown;
+static bool usb_suspended;
 
 static void print_help(void)
 {
@@ -40,9 +48,9 @@ static void print_help(void)
 	printk("  help              show this help\n");
 	printk("  status            show connection state\n");
 	printk("  pair              pair with Unifying receiver\n");
-	printk("  sleep             stop keep-alive / disable RADIO\n");
-	printk("  wake              wake-up and reconnect\n");
-	printk("  key <name>        send key press+release\n");
+	printk("  sleep             RADIO+USB sleep (GPIOTE wake)\n");
+	printk("  wake              async wake-up and reconnect\n");
+	printk("  key <name>        queue key press+release\n");
 	printk("  unpair            erase credentials\n");
 	keymap_print_help();
 }
@@ -142,20 +150,20 @@ static void handle_line(struct app_ctx *ctx, char *line)
 		if (err) {
 			reply_err("wake_failed", err);
 		} else {
+			printk("Wake queued\n");
 			reply_ok();
 		}
 		return;
 	}
 
 	if (strncmp(line, "key ", 4) == 0) {
-		/* 已配对可自动唤醒；未配对不 pair，返回 not_paired / not_connected */
-		err = app_do_key(ctx, line + 4);
+		err = app_key_request(ctx, line + 4);
 		ctx->last_error = err;
 		if (err == UNIFYING_ERROR) {
 			if (!ctx->has_credentials && ctx->mode != APP_MODE_CONNECTED) {
 				reply_err("not_paired", UNIFYING_SUCCESS);
-			} else if (ctx->mode != APP_MODE_CONNECTED) {
-				reply_err("not_connected", UNIFYING_SUCCESS);
+			} else if (app_rf_busy(ctx)) {
+				reply_err("busy", UNIFYING_SUCCESS);
 			} else {
 				reply_err("unknown_key", UNIFYING_SUCCESS);
 			}
@@ -241,7 +249,18 @@ int usb_cli_init(void)
 		return -ENODEV;
 	}
 
+#if defined(CONFIG_USB_DEVICE_STACK_NEXT)
+	udc_dev = DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0));
+	if (!device_is_ready(udc_dev)) {
+		LOG_WRN("zephyr_udc0 not ready — USB suspend may fail");
+		udc_dev = NULL;
+	}
+#endif
+
 	ring_buf_init(&rx_ring, sizeof(rx_ring_data), rx_ring_data);
+	usb_suspended = false;
+	banner_shown = false;
+	irq_enabled = false;
 
 #if defined(CONFIG_USB_DEVICE_STACK) && !defined(CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT)
 	err = usb_enable(NULL);
@@ -257,9 +276,81 @@ int usb_cli_init(void)
 	return 0;
 }
 
+int usb_cli_suspend(void)
+{
+	int err = 0;
+
+	if (usb_suspended) {
+		return 0;
+	}
+
+	irq_enabled = false;
+	banner_shown = false;
+	line_len = 0;
+	ring_buf_reset(&rx_ring);
+
+#if defined(CONFIG_USB_DEVICE_STACK_NEXT)
+	if (udc_dev != NULL) {
+		err = udc_disable(udc_dev);
+		if (err && err != -EALREADY) {
+			LOG_WRN("udc_disable: %d", err);
+		}
+	}
+#else
+	err = usb_disable();
+	if (err && err != -EALREADY) {
+		LOG_WRN("usb_disable: %d", err);
+	}
+#endif
+
+	usb_suspended = true;
+	LOG_INF("USB suspended");
+	return 0;
+}
+
+int usb_cli_resume(void)
+{
+	int err = 0;
+
+	if (!usb_suspended) {
+		return 0;
+	}
+
+#if defined(CONFIG_USB_DEVICE_STACK_NEXT)
+	if (udc_dev != NULL) {
+		err = udc_enable(udc_dev);
+		if (err && err != -EALREADY) {
+			LOG_ERR("udc_enable: %d", err);
+			return err;
+		}
+	}
+#else
+	err = usb_enable(NULL);
+	if (err && err != -EALREADY) {
+		LOG_ERR("usb_enable resume: %d", err);
+		return err;
+	}
+#endif
+
+	usb_suspended = false;
+	banner_shown = false;
+	irq_enabled = false;
+	LOG_INF("USB resumed");
+	return 0;
+}
+
+bool usb_cli_is_suspended(void)
+{
+	return usb_suspended;
+}
+
 void usb_cli_poll(struct app_ctx *ctx)
 {
 	uint8_t byte;
+
+	if (usb_suspended) {
+		return;
+	}
 
 	try_show_banner(ctx);
 

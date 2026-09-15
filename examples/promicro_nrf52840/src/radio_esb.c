@@ -413,3 +413,8 @@ uint8_t radio_esb_current_channel(void)
 {
 	return last_channel;
 }
+
+uint8_t radio_esb_last_channel(void)
+{
+	return last_channel;
+}

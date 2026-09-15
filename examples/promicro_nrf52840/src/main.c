@@ -1,6 +1,6 @@
 /*!
  * \file main.c
- * \brief Pro Micro nRF52840 Unifying 测试固件入口与状态机。
+ * \brief Pro Micro nRF52840 Unifying：异步唤醒发键 + USB/RADIO 休眠。
  */
 
 #include <string.h>
@@ -25,19 +25,15 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 #define TRANSMIT_BUFFER_SIZE 8
 #define RECEIVE_BUFFER_SIZE 8
 #define DEVICE_NAME "ProMicroKB"
-/*! 固定无线 PID（勿用随机值：部分主机软件会把 PID 字节当成名称前缀显示成乱码）。 */
 #define DEVICE_PRODUCT_ID 0x1025
 #define DEVICE_SERIAL 0xA58094B6u
 #define DEVICE_TYPE 0x0147
 #define CAPABILITIES 0x1E40
 
-/*! 上电未配对（或重连失败后）自动配对窗口。 */
 #define BOOT_PAIR_WINDOW_MS (20 * 1000)
-/*! 已连接且无按键活动后主动休眠。 */
 #define IDLE_SLEEP_MS (60 * 1000)
 #define BOOT_PAIR_RETRY_MS 2000
-/*! 按键发送失败时跨信道重试次数（覆盖整表跳频）。 */
-#define KEY_TX_CHANNEL_TRIES UNIFYING_CHANNELS_LEN
+#define KEY_RELEASE_GAP_MS 20
 
 #if DT_NODE_HAS_STATUS(DT_ALIAS(led0), okay)
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -90,6 +86,11 @@ void app_start_boot_pair(struct app_ctx *ctx)
 	LOG_INF("Boot pair window %d ms", BOOT_PAIR_WINDOW_MS);
 }
 
+bool app_rf_busy(const struct app_ctx *ctx)
+{
+	return ctx != NULL && ctx->rf_phase != APP_RF_IDLE;
+}
+
 static void led_set(bool on)
 {
 #if DT_NODE_HAS_STATUS(DT_ALIAS(led0), okay)
@@ -101,22 +102,6 @@ static void led_set(bool on)
 #else
 	ARG_UNUSED(on);
 #endif
-}
-
-static void led_blink(uint32_t times)
-{
-	uint32_t i;
-
-	for (i = 0; i < times; i++) {
-		led_set(true);
-		k_msleep(40);
-		led_set(false);
-		k_msleep(40);
-	}
-
-	if (g_ctx.mode == APP_MODE_CONNECTED) {
-		led_set(true);
-	}
 }
 
 static void led_init(void)
@@ -155,6 +140,11 @@ static void save_credentials(struct app_ctx *ctx)
 	}
 }
 
+static void sync_counter_from_state(struct app_ctx *ctx)
+{
+	ctx->aes_counter = ctx->state.aes_counter;
+}
+
 static void state_bind(struct app_ctx *ctx)
 {
 	unifying_state_init(&ctx->state,
@@ -165,25 +155,243 @@ static void state_bind(struct app_ctx *ctx)
 			    ctx->aes_key,
 			    ctx->aes_counter,
 			    UNIFYING_DEFAULT_TIMEOUT_KEYBOARD,
-			    unifying_channels[0]);
+			    radio_esb_last_channel());
 }
 
-static enum unifying_error keystroke_with_retry(struct app_ctx *ctx,
-						const uint8_t keys[UNIFYING_KEYS_LEN],
-						uint8_t modifiers)
+static enum unifying_error rf_prepare_radio(struct app_ctx *ctx)
 {
-	enum unifying_error err = UNIFYING_TRANSMIT_ERROR;
-	int i;
+	uint8_t ch;
 
-	for (i = 0; i < KEY_TX_CHANNEL_TRIES; i++) {
-		err = unifying_encrypted_keystroke(&ctx->state, keys, modifiers);
-		if (err != UNIFYING_TRANSMIT_ERROR) {
-			return err;
+	if (ctx->usb_suspended) {
+		if (usb_cli_resume() != 0) {
+			return UNIFYING_ERROR;
 		}
-		/* TRANSMIT_ERROR 时协议库已跳到下一信道，继续重试。 */
+		ctx->usb_suspended = false;
 	}
 
-	return err;
+	if (radio_esb_is_sleeping()) {
+		if (radio_esb_wake() != 0) {
+			return UNIFYING_ERROR;
+		}
+	}
+
+	if (ctx->interface.set_address(ctx->address) != 0) {
+		return UNIFYING_SET_ADDRESS_ERROR;
+	}
+
+	ch = radio_esb_last_channel();
+	if (ctx->interface.set_channel(ch) != 0) {
+		return UNIFYING_SET_CHANNEL_ERROR;
+	}
+
+	ctx->state.channel = ch;
+	unifying_state_buffers_clear(&ctx->state);
+	ctx->state.next_transmit = 0;
+	ctx->state.previous_transmit = 0;
+
+	LOG_INF("RF start on channel %u (last)", ch);
+	return unifying_connect_begin(&ctx->state);
+}
+
+static void rf_finish_fail(struct app_ctx *ctx, enum unifying_error err)
+{
+	ctx->last_error = err;
+	ctx->rf_phase = APP_RF_IDLE;
+	ctx->key_pending = false;
+
+	if (ctx->boot_connect_pending) {
+		ctx->boot_connect_pending = false;
+		LOG_WRN("Boot reconnect failed (%s) → pair window",
+			unifying_get_error_name(err));
+		app_start_boot_pair(ctx);
+		return;
+	}
+
+	if (ctx->keep_boot_pair_on_fail && ctx->boot_trying) {
+		LOG_WRN("Key reconnect failed (%s), continue pairing",
+			unifying_get_error_name(err));
+		ctx->keep_boot_pair_on_fail = false;
+		ctx->mode = APP_MODE_IDLE;
+		led_set(false);
+		return;
+	}
+
+	ctx->keep_boot_pair_on_fail = false;
+	ctx->mode = APP_MODE_IDLE;
+	led_set(false);
+}
+
+static void rf_finish_connected(struct app_ctx *ctx)
+{
+	ctx->mode = APP_MODE_CONNECTED;
+	led_set(true);
+	app_note_activity(ctx);
+	app_stop_boot_try(ctx);
+	ctx->boot_connect_pending = false;
+	ctx->keep_boot_pair_on_fail = false;
+	ctx->rf_phase = APP_RF_IDLE;
+	LOG_INF("Connected (ch=%u)", radio_esb_last_channel());
+}
+
+static enum unifying_error rf_start(struct app_ctx *ctx, bool with_key, const char *name)
+{
+	struct keymap_stroke stroke;
+
+	if (app_rf_busy(ctx)) {
+		return UNIFYING_ERROR;
+	}
+
+	if (!ctx->has_credentials && ctx->mode != APP_MODE_CONNECTED) {
+		return UNIFYING_ERROR;
+	}
+
+	ctx->key_pending = with_key;
+	ctx->keep_boot_pair_on_fail = ctx->boot_trying;
+	ctx->connect_attempts = 0;
+	ctx->press_attempts = 0;
+	ctx->release_at_ms = 0;
+
+	if (with_key) {
+		if (name == NULL || name[0] == '\0') {
+			return UNIFYING_ERROR;
+		}
+		if (!keymap_parse(name, &stroke)) {
+			return UNIFYING_ERROR;
+		}
+		strncpy(ctx->key_name, name, sizeof(ctx->key_name) - 1);
+		ctx->key_name[sizeof(ctx->key_name) - 1] = '\0';
+		memcpy(ctx->pending_keys, stroke.keys, UNIFYING_KEYS_LEN);
+		ctx->pending_modifiers = stroke.modifiers;
+	} else {
+		ctx->key_name[0] = '\0';
+	}
+
+	if (ctx->mode == APP_MODE_CONNECTED && with_key) {
+		ctx->rf_phase = APP_RF_SEND_PRESS;
+		return UNIFYING_SUCCESS;
+	}
+
+	ctx->rf_phase = APP_RF_WAKE_USB_RADIO;
+	return UNIFYING_SUCCESS;
+}
+
+enum unifying_error app_key_request(struct app_ctx *ctx, const char *name)
+{
+	return rf_start(ctx, true, name);
+}
+
+enum unifying_error app_connect_request(struct app_ctx *ctx)
+{
+	if (!ctx->has_credentials) {
+		return UNIFYING_ERROR;
+	}
+
+	return rf_start(ctx, false, NULL);
+}
+
+void app_rf_poll(struct app_ctx *ctx)
+{
+	enum unifying_error err;
+	uint8_t release_keys[UNIFYING_KEYS_LEN] = {0};
+
+	if (ctx == NULL || ctx->rf_phase == APP_RF_IDLE) {
+		return;
+	}
+
+	switch (ctx->rf_phase) {
+	case APP_RF_WAKE_USB_RADIO:
+		err = rf_prepare_radio(ctx);
+		if (err) {
+			rf_finish_fail(ctx, err);
+			return;
+		}
+		ctx->rf_phase = APP_RF_CONNECT_TRY;
+		return;
+
+	case APP_RF_CONNECT_TRY:
+		err = unifying_loop(&ctx->state, true, true, false);
+		if (!err) {
+			if (ctx->key_pending) {
+				ctx->rf_phase = APP_RF_SEND_PRESS;
+			} else {
+				rf_finish_connected(ctx);
+			}
+			return;
+		}
+
+		ctx->connect_attempts++;
+		ctx->last_error = err;
+		if (ctx->connect_attempts >= UNIFYING_CHANNELS_LEN) {
+			unifying_state_buffers_clear(&ctx->state);
+			rf_finish_fail(ctx, err);
+			return;
+		}
+		/* 失败时协议库已 hop，wake 仍在队列，下圈再试 */
+		return;
+
+	case APP_RF_SEND_PRESS:
+		led_set(true);
+		err = unifying_encrypted_keystroke(&ctx->state,
+						   ctx->pending_keys,
+						   ctx->pending_modifiers);
+		if (err == UNIFYING_TRANSMIT_ERROR) {
+			ctx->press_attempts++;
+			if (ctx->press_attempts >= UNIFYING_CHANNELS_LEN) {
+				rf_finish_fail(ctx, err);
+			}
+			return;
+		}
+		if (err) {
+			rf_finish_fail(ctx, err);
+			return;
+		}
+		sync_counter_from_state(ctx);
+		ctx->press_attempts = 0;
+		ctx->release_at_ms = k_uptime_get() + KEY_RELEASE_GAP_MS;
+		ctx->rf_phase = APP_RF_WAIT_RELEASE;
+		ctx->mode = APP_MODE_CONNECTED;
+		app_stop_boot_try(ctx);
+		ctx->boot_connect_pending = false;
+		ctx->keep_boot_pair_on_fail = false;
+		return;
+
+	case APP_RF_WAIT_RELEASE:
+		if (k_uptime_get() < ctx->release_at_ms) {
+			return;
+		}
+		ctx->rf_phase = APP_RF_SEND_RELEASE;
+		ctx->press_attempts = 0;
+		return;
+
+	case APP_RF_SEND_RELEASE:
+		err = unifying_encrypted_keystroke(&ctx->state, release_keys, 0);
+		if (err == UNIFYING_TRANSMIT_ERROR) {
+			ctx->press_attempts++;
+			if (ctx->press_attempts >= UNIFYING_CHANNELS_LEN) {
+				ctx->last_error = err;
+				ctx->key_pending = false;
+				app_note_activity(ctx);
+				ctx->rf_phase = APP_RF_IDLE;
+			}
+			return;
+		}
+		if (err) {
+			/* 按下已成功；松开失败仍算已连接 */
+			ctx->last_error = err;
+		} else {
+			sync_counter_from_state(ctx);
+			ctx->last_error = UNIFYING_SUCCESS;
+		}
+		ctx->key_pending = false;
+		app_note_activity(ctx);
+		ctx->rf_phase = APP_RF_IDLE;
+		led_set(true);
+		return;
+
+	default:
+		ctx->rf_phase = APP_RF_IDLE;
+		return;
+	}
 }
 
 enum unifying_error app_do_pair(struct app_ctx *ctx)
@@ -194,15 +402,23 @@ enum unifying_error app_do_pair(struct app_ctx *ctx)
 	const char *name = DEVICE_NAME;
 	uint8_t name_length = (uint8_t)strlen(name);
 
+	if (app_rf_busy(ctx)) {
+		return UNIFYING_ERROR;
+	}
+
+	if (ctx->usb_suspended) {
+		(void)usb_cli_resume();
+		ctx->usb_suspended = false;
+	}
+
 	if (radio_esb_is_sleeping()) {
-		err = radio_esb_wake();
-		if (err) {
+		if (radio_esb_wake() != 0) {
 			return UNIFYING_ERROR;
 		}
 	}
 
 	ctx->mode = APP_MODE_PAIRING;
-	led_blink(3);
+	led_set(true);
 	unifying_state_buffers_clear(&ctx->state);
 
 	LOG_INF("Pairing as '%s' (len=%u) pid=0x%04x", name, name_length, DEVICE_PRODUCT_ID);
@@ -222,162 +438,68 @@ enum unifying_error app_do_pair(struct app_ctx *ctx)
 		return err;
 	}
 
-	ctx->aes_counter = ctx->state.aes_counter;
+	sync_counter_from_state(ctx);
 	save_credentials(ctx);
 	ctx->mode = APP_MODE_CONNECTED;
 	led_set(true);
 	app_note_activity(ctx);
-	LOG_INF("Paired OK");
-	return UNIFYING_SUCCESS;
-}
-
-enum unifying_error app_do_connect(struct app_ctx *ctx)
-{
-	enum unifying_error err;
-
-	if (!ctx->has_credentials) {
-		return UNIFYING_ERROR;
-	}
-
-	if (radio_esb_is_sleeping()) {
-		if (radio_esb_wake() != 0) {
-			return UNIFYING_ERROR;
-		}
-	}
-
-	/* 确保射频使用已保存地址 */
-	if (ctx->interface.set_address(ctx->address) != 0) {
-		return UNIFYING_SET_ADDRESS_ERROR;
-	}
-
-	if (ctx->interface.set_channel(unifying_channels[0]) != 0) {
-		return UNIFYING_SET_CHANNEL_ERROR;
-	}
-
-	ctx->state.channel = unifying_channels[0];
-	unifying_state_buffers_clear(&ctx->state);
-
-	err = unifying_connect(&ctx->state);
-	if (err) {
-		ctx->mode = APP_MODE_IDLE;
-		led_set(false);
-		return err;
-	}
-
-	ctx->mode = APP_MODE_CONNECTED;
-	led_set(true);
-	app_note_activity(ctx);
-	LOG_INF("Connected");
+	LOG_INF("Paired OK ch=%u", radio_esb_last_channel());
 	return UNIFYING_SUCCESS;
 }
 
 enum unifying_error app_do_sleep(struct app_ctx *ctx)
 {
 	app_stop_boot_try(ctx);
+	ctx->boot_connect_pending = false;
+	ctx->rf_phase = APP_RF_IDLE;
+	ctx->key_pending = false;
+
+	/* 休眠前刷一次 counter（平时只改 RAM） */
+	if (ctx->has_credentials) {
+		sync_counter_from_state(ctx);
+		save_credentials(ctx);
+	}
+
 	unifying_state_buffers_clear(&ctx->state);
 	radio_esb_sleep();
+
+	if (!ctx->usb_suspended) {
+		(void)usb_cli_suspend();
+		ctx->usb_suspended = true;
+	}
+
+	key_gpio_clear_wake();
+
 	ctx->mode = APP_MODE_SLEEPING;
 	led_set(false);
-	LOG_INF("Sleeping");
+	LOG_INF("Sleeping (RADIO+USB off, last_ch=%u)", radio_esb_last_channel());
 	return UNIFYING_SUCCESS;
 }
 
 enum unifying_error app_do_wake(struct app_ctx *ctx)
 {
-	enum unifying_error err;
-
 	app_stop_boot_try(ctx);
-
-	if (radio_esb_wake() != 0) {
-		return UNIFYING_ERROR;
-	}
-
-	if (!ctx->has_credentials) {
-		ctx->mode = APP_MODE_IDLE;
-		return UNIFYING_ERROR;
-	}
-
-	err = app_do_connect(ctx);
-	return err;
-}
-
-enum unifying_error app_do_key(struct app_ctx *ctx, const char *name)
-{
-	struct keymap_stroke stroke;
-	enum unifying_error err;
-	uint8_t release_keys[UNIFYING_KEYS_LEN] = {0};
-	bool in_boot_pair;
-
-	/* 未连接且未配对：忽略（不自动 pair） */
-	if (ctx->mode != APP_MODE_CONNECTED && !ctx->has_credentials) {
-		return UNIFYING_ERROR;
-	}
-
-	/*
-	 * 未连接但已有凭证：尝试重连一次。
-	 * 若正处于上电配对窗（重连失败后的 20s pair），按键表示用户想用键盘：
-	 * 重连成功则停止配对并发键；失败则保持配对窗继续。
-	 * 注意：不用 app_do_wake()，避免失败时也清掉 boot_trying。
-	 */
-	if (ctx->mode != APP_MODE_CONNECTED) {
-		in_boot_pair = ctx->boot_trying;
-		if (in_boot_pair) {
-			LOG_INF("Key during pair window → reconnect once");
-		}
-
-		err = app_do_connect(ctx);
-		if (err) {
-			if (in_boot_pair) {
-				LOG_WRN("Key reconnect failed (%s), continue pairing",
-					unifying_get_error_name(err));
-			}
-			return err;
-		}
-
-		app_stop_boot_try(ctx);
-		app_note_activity(ctx);
-	}
-
-	if (ctx->mode != APP_MODE_CONNECTED) {
-		return UNIFYING_ERROR;
-	}
-
-	if (!keymap_parse(name, &stroke)) {
-		return UNIFYING_ERROR;
-	}
-
-	led_blink(1);
-
-	err = keystroke_with_retry(ctx, stroke.keys, stroke.modifiers);
-	if (err) {
-		return err;
-	}
-
-	ctx->aes_counter = ctx->state.aes_counter;
-	save_credentials(ctx);
-
-	k_msleep(20);
-
-	err = keystroke_with_retry(ctx, release_keys, 0);
-	if (err) {
-		return err;
-	}
-
-	ctx->aes_counter = ctx->state.aes_counter;
-	save_credentials(ctx);
-	app_note_activity(ctx);
-	return UNIFYING_SUCCESS;
+	return app_connect_request(ctx);
 }
 
 enum unifying_error app_do_unpair(struct app_ctx *ctx)
 {
 	app_stop_boot_try(ctx);
+	ctx->boot_connect_pending = false;
+	ctx->rf_phase = APP_RF_IDLE;
+	ctx->key_pending = false;
 	(void)persist_clear();
 	ctx->has_credentials = false;
 	memset(ctx->address, 0, sizeof(ctx->address));
 	memset(ctx->aes_key, 0, sizeof(ctx->aes_key));
 	ctx->aes_counter = random_u32();
 	unifying_state_buffers_clear(&ctx->state);
+
+	if (ctx->usb_suspended) {
+		(void)usb_cli_resume();
+		ctx->usb_suspended = false;
+	}
+
 	ctx->mode = APP_MODE_IDLE;
 	led_set(false);
 	LOG_INF("Unpaired");
@@ -388,7 +510,7 @@ void app_tick(struct app_ctx *ctx)
 {
 	enum unifying_error err;
 
-	if (ctx->mode != APP_MODE_CONNECTED) {
+	if (ctx->mode != APP_MODE_CONNECTED || app_rf_busy(ctx)) {
 		return;
 	}
 
@@ -397,7 +519,6 @@ void app_tick(struct app_ctx *ctx)
 		ctx->last_error = err;
 	}
 
-	/* 跳频后同步本地记录的信道（unifying_transmit 内部会改 state.channel） */
 	(void)radio_esb_current_channel();
 }
 
@@ -405,7 +526,10 @@ void app_power_manage(struct app_ctx *ctx)
 {
 	int64_t now = k_uptime_get();
 
-	/* 仅处理上电配对窗口；重连在 main 里只做一次 */
+	if (app_rf_busy(ctx)) {
+		return;
+	}
+
 	if (ctx->boot_trying) {
 		if (ctx->mode == APP_MODE_CONNECTED) {
 			app_stop_boot_try(ctx);
@@ -481,6 +605,9 @@ int main(void)
 	g_ctx.mode = APP_MODE_IDLE;
 	g_ctx.last_error = UNIFYING_SUCCESS;
 	g_ctx.last_activity_ms = k_uptime_get();
+	g_ctx.rf_phase = APP_RF_IDLE;
+	g_ctx.usb_suspended = false;
+	g_ctx.boot_connect_pending = false;
 
 	if (persist_load(&cred)) {
 		memcpy(g_ctx.address, cred.address, UNIFYING_ADDRESS_LEN);
@@ -497,21 +624,13 @@ int main(void)
 
 	state_bind(&g_ctx);
 
-	/*
-	 * 上电策略：
-	 * - 已配对：先 reconnect 一次；失败则立即进入 20s pair 窗
-	 * - 未配对：直接进入 20s pair 窗
-	 */
 	g_ctx.boot_trying = false;
 	if (g_ctx.has_credentials) {
-		LOG_INF("Boot reconnect once...");
-		g_ctx.last_error = app_do_connect(&g_ctx);
-		if (g_ctx.mode == APP_MODE_CONNECTED) {
-			app_note_activity(&g_ctx);
-			LOG_INF("Boot reconnect OK → idle sleep timer armed");
-		} else {
-			LOG_WRN("Boot reconnect failed (%s) → start pair window",
-				unifying_get_error_name(g_ctx.last_error));
+		LOG_INF("Boot reconnect (async, last_ch=%u)...", radio_esb_last_channel());
+		g_ctx.boot_connect_pending = true;
+		g_ctx.last_error = app_connect_request(&g_ctx);
+		if (g_ctx.last_error) {
+			g_ctx.boot_connect_pending = false;
 			app_start_boot_pair(&g_ctx);
 		}
 	} else {
@@ -519,11 +638,19 @@ int main(void)
 	}
 
 	while (1) {
+		if (g_ctx.mode == APP_MODE_SLEEPING && !app_rf_busy(&g_ctx)) {
+			key_gpio_wait_wake();
+		}
+
 		usb_cli_poll(&g_ctx);
-		key_gpio_poll(&g_ctx);
+		key_gpio_service(&g_ctx);
+		app_rf_poll(&g_ctx);
 		app_power_manage(&g_ctx);
 		app_tick(&g_ctx);
-		k_msleep(1);
+
+		if (g_ctx.mode != APP_MODE_SLEEPING || app_rf_busy(&g_ctx)) {
+			k_msleep(1);
+		}
 	}
 
 	return 0;
