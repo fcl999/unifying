@@ -1,0 +1,28 @@
+# ZMK Unifying 示例：拉取上游 ZMK + Nordic sdk-nrf（提供 CONFIG_ESB）
+#
+# 在本目录的上级初始化 west 工作区：
+#   cd examples/zmk_unifying
+#   west init -l config
+#   west update
+#
+# 若已存在本地 zmk/ 克隆，west update 会检出到同一路径或跳过（视 west 版本）。
+
+manifest:
+  remotes:
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
+    - name: nrfconnect
+      url-base: https://github.com/nrfconnect
+  projects:
+    - name: zmk
+      remote: zmkfirmware
+      revision: main
+      import: app/west.yml
+    # 仅作为 Zephyr 模块提供 ESB；不要 import 其 west.yml，以免与 ZMK 的 Zephyr 冲突
+    - name: sdk-nrf
+      remote: nrfconnect
+      revision: v3.1.0
+      path: nrf
+      clone-depth: 1
+  self:
+    path: config

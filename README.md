@@ -14,6 +14,9 @@ https://github.com/nRF24/RF24
 Pro Micro nRF52840 (nRF Connect SDK + ESB + USB CDC) example:
 [`examples/promicro_nrf52840/`](examples/promicro_nrf52840/)
 
+ZMK + USB / BLE×3 / Unifying (soft-reboot switch) example:
+[`examples/zmk_unifying/`](examples/zmk_unifying/)
+
 ## GitHub Codespaces
 
 Open this repo in [Codespaces](https://github.com/codespaces). The Pro Micro build requires nRF Connect SDK **v3.4.0** with the `promicro_nrf52840` board definition. The setup script selects the existing `/root/ncs/v3.4.0` installation and refuses to fall back to the incompatible `/workdir` NCS 2.9 environment.

@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: MIT
+ *
+ * 六键原型：Q W E R T + Fn
+ * Fn+Q/W/E → BLE 0/1/2（跨优联时软复位）
+ * Fn+R     → Unifying（软复位；启动逻辑同 promicro：重连 / 20s 自动配对）
+ * Fn+T     → USB（跨优联时软复位）
+ */
+
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk_unifying/unifying.h>
+
+/ {
+	keymap {
+		compatible = "zmk,keymap";
+
+		default_layer {
+			bindings = <
+				&kp Q  &kp W  &kp E  &kp R  &kp T  &mo 1
+			>;
+		};
+
+		fn_layer {
+			bindings = <
+				&uni_mode UNI_TO_BLE0
+				&uni_mode UNI_TO_BLE1
+				&uni_mode UNI_TO_BLE2
+				&uni_mode UNI_OUT
+				&uni_mode UNI_TO_USB
+				&trans
+			>;
+		};
+	};
+};

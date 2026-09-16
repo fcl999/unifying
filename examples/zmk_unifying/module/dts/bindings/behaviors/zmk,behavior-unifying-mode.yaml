@@ -1,0 +1,8 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+description: Unifying transport mode selection (soft-reboot)
+
+compatible: "zmk,behavior-unifying-mode"
+
+include: one_param.yaml

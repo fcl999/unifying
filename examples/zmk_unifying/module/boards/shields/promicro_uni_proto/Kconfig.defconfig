@@ -1,0 +1,27 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+if SHIELD_PROMICRO_UNI_PROTO
+
+config ZMK_KEYBOARD_NAME
+	default "ProMicro Uni"
+
+config ZMK_UNIFYING
+	default y
+
+# 三路蓝牙选机
+config BT_MAX_PAIRED
+	default 3
+
+config BT_MAX_CONN
+	default 3
+
+# 优联发送需要 6 键 HKRO
+choice ZMK_HID_REPORT_TYPE
+	default ZMK_HID_REPORT_TYPE_HKRO
+endchoice
+
+config ZMK_HID_KEYBOARD_REPORT_SIZE
+	default 6
+
+endif

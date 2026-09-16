@@ -1,0 +1,18 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: MIT
+ */
+
+/ {
+	behaviors {
+		uni_mode: unifying_mode {
+			compatible = "zmk,behavior-unifying-mode";
+			#binding-cells = <1>;
+		};
+
+		uni_pair: unifying_pair {
+			compatible = "zmk,behavior-unifying-pair";
+			#binding-cells = <1>;
+		};
+	};
+};

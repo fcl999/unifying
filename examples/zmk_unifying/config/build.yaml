@@ -1,0 +1,7 @@
+# GitHub Actions / 本地 build.yaml 清单（可选）
+---
+include:
+  - board: nice_nano_v2
+    shield: promicro_uni_proto
+  - board: promicro_nrf52840
+    shield: promicro_uni_proto

@@ -1,0 +1,10 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+name: zmk_unifying
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    board_root: .
+    dts_root: .

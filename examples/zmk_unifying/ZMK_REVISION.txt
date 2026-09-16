@@ -1,0 +1,5 @@
+# Upstream ZMK revision present in examples/zmk_unifying/zmk (shallow clone)
+9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
+fix(core): avoid keycode macros conflict in C files (#3498)
+2026-09-14 22:36:31 -0600
+Source: https://github.com/zmkfirmware/zmk

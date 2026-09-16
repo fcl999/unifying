@@ -1,0 +1,44 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: MIT
+ *
+ * 最小 1x6 原型矩阵，便于验证 Fn 层五路切换。
+ * 默认引脚按 nice!nano / Pro Micro nRF52840 常用：
+ *   rows: P0.02  cols: P0.09 P0.10 P0.11 P0.12 P0.13 P0.14
+ * 请按实际接线修改。
+ */
+
+#include <dt-bindings/zmk/matrix_transform.h>
+#include <behaviors/unifying.dtsi>
+
+/ {
+	chosen {
+		zmk,kscan = &kscan0;
+		zmk,matrix_transform = &default_transform;
+	};
+
+	default_transform: keymap_transform0 {
+		compatible = "zmk,matrix-transform";
+		columns = <6>;
+		rows = <1>;
+		map = <
+			RC(0,0) RC(0,1) RC(0,2) RC(0,3) RC(0,4) RC(0,5)
+		>;
+	};
+
+	kscan0: kscan_0 {
+		compatible = "zmk,kscan-gpio-matrix";
+		diode-direction = "col2row";
+
+		row-gpios
+			= <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+		col-gpios
+			= <&gpio0 9 GPIO_ACTIVE_HIGH>
+			, <&gpio0 10 GPIO_ACTIVE_HIGH>
+			, <&gpio0 11 GPIO_ACTIVE_HIGH>
+			, <&gpio0 12 GPIO_ACTIVE_HIGH>
+			, <&gpio0 13 GPIO_ACTIVE_HIGH>
+			, <&gpio0 14 GPIO_ACTIVE_HIGH>
+			;
+	};
+};

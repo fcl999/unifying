@@ -1,0 +1,52 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+menuconfig ZMK_UNIFYING
+	bool "Logitech Unifying output (ESB)"
+	depends on ESB
+	help
+	  Enable Logitech Unifying transport via Nordic ESB.
+	  Mutually exclusive with BLE at runtime: switching modes soft-reboots.
+
+if ZMK_UNIFYING
+
+config ZMK_UNIFYING_DEVICE_NAME
+	string "Unifying device name shown in Logitech software"
+	default "ZmkUniKB"
+
+config ZMK_UNIFYING_PRODUCT_ID
+	hex "Unifying product ID (part of AES key material)"
+	default 0x1025
+
+config ZMK_UNIFYING_DEVICE_TYPE
+	hex "Unifying device type field"
+	default 0x0147
+
+config ZMK_UNIFYING_CAPABILITIES
+	hex "Unifying HID++ capabilities"
+	default 0x1E40
+
+config ZMK_UNIFYING_TICK_MS
+	int "unifying_tick period (ms)"
+	default 5
+	range 1 50
+
+config ZMK_UNIFYING_TX_BUFFER
+	int "Unifying TX ring buffer depth"
+	default 8
+
+config ZMK_UNIFYING_RX_BUFFER
+	int "Unifying RX ring buffer depth"
+	default 8
+
+config ZMK_UNIFYING_BOOT_PAIR_WINDOW_MS
+	int "Boot pair window length (ms), same idea as promicro 20s"
+	default 20000
+	range 1000 120000
+
+config ZMK_UNIFYING_BOOT_PAIR_RETRY_MS
+	int "Interval between boot pair attempts (ms)"
+	default 2000
+	range 200 10000
+
+endif # ZMK_UNIFYING

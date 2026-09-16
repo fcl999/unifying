@@ -62,3 +62,13 @@ build/
 *.uf2
 *.map
 
+# ZMK example west workspace (large clones)
+examples/zmk_unifying/zmk/
+examples/zmk_unifying/nrf/
+examples/zmk_unifying/zephyr/
+examples/zmk_unifying/modules/
+examples/zmk_unifying/bootloader/
+examples/zmk_unifying/tools/
+examples/zmk_unifying/.west/
+examples/zmk_unifying/build/
+

@@ -1,0 +1,8 @@
+file_format: "1"
+id: promicro_uni_proto
+name: Pro Micro Unifying Proto
+type: shield
+url: https://github.com/
+requires: [pro_micro]
+features:
+  - keys
